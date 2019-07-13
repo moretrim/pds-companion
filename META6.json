@@ -1,0 +1,19 @@
+{
+    "perl": "6.d",
+    "name": "PFH-Tools",
+    "description": "Crude tools that no one should be using.",
+    "auth": "github:moretrim",
+    "source-url": "https://github.com/moretrim/PFH-Tools.git",
+    "license": "GPL-3.0-only",
+    "version": "0.1.0-dev",
+    "api": "0",
+    "depends": [
+        "Grammar::ErrorReporting"
+    ],
+    "provides": {
+        "PDS":       "lib/PDS.pm6",
+        "Victoria2": "lib/Victoria2.pm6",
+        "remake":    "lib/remake.pm6",
+        "unsorted":  "lib/unsorted.pm6"
+    }
+}

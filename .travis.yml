@@ -1,0 +1,30 @@
+os:
+  - linux
+
+language:
+  - minimal
+
+services:
+  - docker
+
+# Container setup.
+before_install:
+  - docker pull jjmerelo/test-perl6
+  - docker images
+
+# Run the tests.
+script: |
+  docker run -t \
+    --name container-env \
+    --volume "$TRAVIS_BUILD_DIR":/test \
+    --entrypoint sh \
+    jjmerelo/test-perl6 -c '
+      # fail on first error
+      set -e
+
+      # No testing the dependencies.
+      zef install --/test --deps-only .
+
+      # Run tests and test installation.
+      zef install .
+    '
