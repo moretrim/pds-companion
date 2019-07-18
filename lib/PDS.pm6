@@ -23,26 +23,24 @@ use Grammar::ErrorReporting;
 # no precompilation;
 # use Grammar::Tracer;
 
-use remake;
-
 sub line-hint(Match:D $_, --> Int:D)
 {
     my \parsed = .target.substr(0, .pos).trim-trailing;
     parsed.lines.elems
 }
 
-# Resort to a global because grammar rules don't capture whitespace, which is where we put comments.
-my @COMMENT-REMARKS;
+class Remarks {
+    has Pair @.commment-remarks;
 
-sub remark(Match:D $/, Str \message)
-{
-    my \line = line-hint($/);
-    remake($/, remarks => ((line => message),))
-}
+    method comment($/) {
+        if $<comment-header> eq ';' {
+            @.comment-ramkers.push(line-hint($/) => "use of non-standard comment header ‘;’")
+        }
+    }
 
-sub format-remarks(Positional:D \remarks, --> Str:D)
-{
-    remarks.map(-> (:$key, :$value) { "on line $key: $value" }).join("\n")
+    method format-remarks(--> Str:D) {
+        @.comment-remarks.unique.map(-> (:$key, :$value) { "on line $key: $value" }).join("\n")
+    }
 }
 
 #| A base for PDS script grammars.
@@ -55,7 +53,6 @@ sub format-remarks(Positional:D \remarks, --> Str:D)
 grammar Grammar does Grammar::ErrorReporting {
     rule TOP {
         ^ @<entries>=<.entry>* $
-        { remake($/, remarks => ()) }
     }
 
     # N.b. handling of non NL-terminated input
@@ -64,9 +61,8 @@ grammar Grammar does Grammar::ErrorReporting {
         $<comment-header>=<[#;]>
         \V*
         [ \n\s* | $ ]
-        { @COMMENT-REMARKS.push(line-hint($/) => "use of non-standard comment header ‘;’") if $<comment-header> eq ';' }
     }
-    token ws { <|wb> \s* <comment>* { remake($/) } }
+    token ws { <|wb> \s* <comment>* }
 
     # N.b. PDS script files use octet-oriented encodings via Windows code pages. We go along with what the most of
     # modding community is doing by sticking to Windows-1252 (aka CP-1252).
@@ -144,37 +140,31 @@ grammar Grammar does Grammar::ErrorReporting {
         | <pair>
         | <value>
         | <color>
-        { remake($/) }
     }
 
     # Specific entries
 
     rule color {
         'color' '=' '{' ~ '}' <color-spec>
-        { remake($/) }
     }
 
     rule color-spec {
         | <hex-rgb> ** 3
         | <dec-rgb> ** 3
-        { remake($/) }
     }
 
     rule hex-rgb {
         « [ 0 | 1 | \d**1..3 <?{ 0 <= $/.Int <= 255 }> ] »
-        { remake($/) }
     }
 
     rule dec-rgb {
         « [ 0 | 1 | 0?'.'\d+ ] »
-        { remake($/) }
     }
 
     # Generic pair
 
     rule pair   {
         <key=.simplex> '=' <value>
-        { remake($/) }
     }
 
     token value { <simplex> | <complex=.block> }
@@ -197,11 +187,10 @@ grammar Grammar does Grammar::ErrorReporting {
     rule block {
         '{' ~ '}'
         @<contents>=<.entry>*
-        { remake($/) }
     }
 }
 
-our sub parse(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252", --> Match:D)
+our sub parse(Grammar \gram, IO:D(Cool:D) \path, Mu :$actions = Mu, Str:D :$enc = "windows-1252", --> Match:D)
 {
     CATCH {
         default {
@@ -210,42 +199,60 @@ our sub parse(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252", -
             .rethrow
         }
     }
-    gram.parse(path.slurp(:$enc))
+    gram.parse(path.slurp(:$enc), :$actions)
+        // die "Input rejected by grammar {gram.^name}."
 }
 
 our sub lint(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252")
 {
-    @COMMENT-REMARKS = ();
-
-    my \soup = parse(gram, path, :$enc);
+    my Remarks $actions = Remarks.new;
+    my \soup = parse(gram, path, :$actions, :$enc);
     unless soup.defined {
-        note "while attempting to parse {path}";
+        note "While attempting to parse {path}";
         return
     }
 
-    my \remarks = |(soup.made<remarks>), |@COMMENT-REMARKS;
-    if remarks {
-        say "in {path}:\n{format-remarks(remarks).indent(4)}"
+    if $actions.comment-remarks {
+        $actions.format-remarks().say;
     }
 }
 
-sub pairify(Match:D $/, --> Pair:D)
-{
-    my $key = ~$<key><identifier>;
-    with $<value><simplex> {
-        $key => ~$_
-    } else {
-        $key => hashify($<value><complex><contents>)
+class Soup {
+    method TOP($/) {
+        make(@<entries>».made)
     }
+
+    method entry($/) {
+        make($/.caps[0].value.made)
+    }
+
+    method color($/) {
+        make(color => $<color-spec>.made)
+    }
+
+    method color-spec($/) {
+        make((@<hex-rgb> // @<dec-rbg>)».made)
+    }
+
+    method hex-rgb($/) { make($/.Int) }
+    method dec-rbg($/) { make($/.Num) }
+
+    method pair($/) {
+        make($<key>.made => $<value>.made)
+    }
+
+    method value($/) {
+        make(($<simplex> // $<complex>).made)
+    }
+
+    method simplex($/) { make($/.made // ~$/) }
+    method number($/) { make($/.Num) }
+
+    method block($/) { make(@<contents>».made) }
 }
 
-sub hashify(Positional:D $_, --> Hash:D)
+#| Turn PDS script into a tree-like array of items and pairs.
+our sub soup(Grammar \gram, Str:D \input, --> Array) is export
 {
-    .map(&pairify).Hash
-}
-
-#| Turn the resulting L<Match> from a L<PDS> grammar into a list of hashes.
-sub soup($/, --> Hash) is export
-{
-    $/ andthen hashify(@<entries>»<pair>) orelse Hash
+    gram.parse(input, actions => Soup).made
 }
