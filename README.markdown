@@ -12,6 +12,14 @@ Build status:
 
 Crude tools that no one should be using.
 
+License
+-------
+
+PFH-Tools is available under the terms of the GNU General Public License version 3. See the accompanying
+[`LICENSE.markdown`][license] file for more information.
+
+[license]: ./LICENSE.markdown
+
 Release history
 ---------------
 
