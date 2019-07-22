@@ -23,8 +23,10 @@ PFH-Tools is available under the terms of the GNU General Public License version
 Release history
 ---------------
 
+### 0.2.0-dev (in development)
+
 ### 0.1.0-alpha
 
-The initial release. A pure library designed for, and tied to [PFH]. Not really suitable for public consumption.
+The initial alpha release. A pure library designed for, and tied to [PFH]. Not really suitable for public consumption.
 
 [PFH]: https://github.com/moretrim/PFH
