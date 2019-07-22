@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with PFH-Tools.  If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 =end COPYRIGHT
 
-unit module Victoria2;
+unit module PDS::Victoria2;
 
 use PDS;
 

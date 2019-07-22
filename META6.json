@@ -12,8 +12,8 @@
     ],
     "provides": {
         "PDS":       "lib/PDS.pm6",
-        "Victoria2": "lib/Victoria2.pm6",
         "remake":    "lib/remake.pm6",
-        "unsorted":  "lib/unsorted.pm6"
+        "unsorted":  "lib/unsorted.pm6",
+        "PDS::Victoria2": "lib/PDS/Victoria2.pm6"
     }
 }
