@@ -23,7 +23,7 @@ use Grammar::ErrorReporting;
 # no precompilation;
 # use Grammar::Tracer;
 
-sub line-hint(Match:D $_, --> Int:D)
+sub line-hint(Match:D $_ --> Int:D)
 {
     my \parsed = .target.substr(0, .pos).trim-trailing;
     parsed.lines.elems
@@ -54,6 +54,8 @@ grammar Grammar does Grammar::ErrorReporting {
     rule TOP {
         ^ @<entries>=<.entry>* $
     }
+
+    token ok { <?> }
 
     # N.b. handling of non NL-terminated input
     token wb { <?after <.syntax-char>|^|$> }
@@ -137,20 +139,22 @@ grammar Grammar does Grammar::ErrorReporting {
     }
 
     rule entry {
-        | <pair>
-        | <value>
-        | <color>
+        | <soup=.pair>
+        | <soup=.value>
+        | <soup=.color>
     }
 
-    # Specific entries
+    ## Specific entries
+
+    ### Colours
 
     rule color {
-        'color' '=' '{' ~ '}' <color-spec>
+        $<key>=('color') '=' '{' ~ '}' <value=.color-spec>
     }
 
     rule color-spec {
-        | <hex-rgb> ** 3
-        | <dec-rgb> ** 3
+        | @<color-values>=(<.hex-rgb> ** 3)
+        | @<color-values>=(<.dec-rgb> ** 3)
     }
 
     rule hex-rgb {
@@ -161,36 +165,40 @@ grammar Grammar does Grammar::ErrorReporting {
         « [ 0 | 1 | 0?'.'\d+ ] »
     }
 
-    # Generic pair
+    ## Generic pair
 
-    rule pair   {
+    rule pair {
         <key=.simplex> '=' <value>
     }
 
-    token value { <simplex> | <complex=.block> }
+    token value { <soup=.simplex> | <soup=.block> }
 
     ## Simple values
 
     # N.b. as opposed to a compound value aka a block
-    token simplex { <identifier> | <identifier=.quoted-identifier> | <date> | <number> }
+    token simplex { <soup=.text> | <soup=.date> | <soup=.number> | <soup=.yes-or-no> }
 
+    token text { <soup=.identifier> | <soup=.quoted-identifier> }
     # N.b. no «» boundary because some transliterated names (e.g. from Slavic languages) end in an apostrophe.
     token identifier        { <?after <.syntax-char>|^> <.identifier-char>+ <?before <.syntax-char>|$> }
     token quoted-identifier { '"' ~ '"' <-["]>* }
-    # N.b. overlaps with identifier
-    token number            { '-'? [ \d+ ['.' \d+]? | '.' \d+ ] » }
     # don't use quantifiers for LTM to kick in
     token date              { « \d\d\d\d '.' \d\d? '.' \d\d? » }
+    # N.b. overlaps with identifier
+    token number            { <soup=.integer> | <soup=.decimal> }
+    token integer           { '-'? \d+ » }
+    token decimal           { '-'? [ \d+ ]? '.' \d+ » }
+    token yes-or-no         { « [ 'yes' | 'no' ] » }
 
     ## Compound values
 
     rule block {
         '{' ~ '}'
-        @<contents>=<.entry>*
+        @<entries>=<.entry>*
     }
 }
 
-our sub parse(Grammar \gram, IO:D(Cool:D) \path, Mu :$actions = Mu, Str:D :$enc = "windows-1252", --> Match:D)
+our sub parse(Grammar \gram, IO:D(Cool:D) \path, Mu :$actions = Mu, Str:D :$enc = "windows-1252" --> Match:D)
 {
     CATCH {
         default {
@@ -218,41 +226,60 @@ our sub lint(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252")
 }
 
 class Soup {
+    # ??? Dear Perl 6, please explain ‘before’ and ‘after’ callbacks.
+    method after($/) {}
+    method before($/) {}
+
     method TOP($/) {
         make(@<entries>».made)
     }
 
-    method entry($/) {
-        make($/.caps[0].value.made)
-    }
+    method ok($/) {}
 
-    method color($/) {
-        make(color => $<color-spec>.made)
-    }
+    method comment($/) {}
+    method ws($/)      {}
+
+    method syntax-char($/)     {}
+    method identifier-char($/) {}
 
     method color-spec($/) {
-        make((@<hex-rgb> // @<dec-rbg>)».made)
+        make(@<color-values>».made)
     }
 
     method hex-rgb($/) { make($/.Int) }
-    method dec-rbg($/) { make($/.Num) }
+    method dec-rbg($/) { make($/.Rat) }
 
-    method pair($/) {
-        make($<key>.made => $<value>.made)
+    method text($/)              { make(~$/) }
+    method identifier($/)        {}
+    method quoted-identifier($/) {}
+    method date($/)              { make(~$/) }
+    method integer($/)           { make($/.Int) }
+    method decimal($/)           { make($/.Rat) }
+    method yes-or-no($/)         { make(~$/ eq 'yes') }
+
+    method FALLBACK($name, $/) {
+        given $/ {
+            when .<soup>:exists    { make(.<soup>.made) }
+            when .<entries>:exists { make(.<entries>».made) }
+            when .<key>:exists && (.<value>:exists) {
+                make(Pair.new(.<key>.made // .<key>.Str, .<value>.made // .<value>.Str))
+            }
+        }
     }
 
-    method value($/) {
-        make(($<simplex> // $<complex>).made)
-    }
+    # These are not strictly speaking necessary thanks to FALLBACK, but do speed up the parsing by avoiding the generic
+    # handling.
 
-    method simplex($/) { make($/.made // ~$/) }
-    method number($/) { make($/.Num) }
-
-    method block($/) { make(@<contents>».made) }
+    method entry($/)   { make($<soup>.made) }
+    method pair($/)    { make($<key>.made => $<value>.made) }
+    method value($/)   { make($<soup>.made) }
+    method simplex($/) { make($<soup>.made) }
+    method number($/)  { make($<soup>.made) }
+    method block($/)   { make(@<entries>».made) }
 }
 
 #| Turn PDS script into a tree-like array of items and pairs.
-our sub soup(Grammar \gram, Str:D \input, --> Array) is export
+our sub soup(Grammar \gram, Str:D \input --> Array) is export
 {
     gram.parse(input, actions => Soup).made
 }

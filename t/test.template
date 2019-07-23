@@ -18,8 +18,8 @@ use PDS;
 
 =head1 Test file template
 
-my \pds-script = q:to«end»;
-end
+my \pds-script = q:to«END»;
+END
 
 my \expectations = [
     'hello' => 'world',

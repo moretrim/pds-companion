@@ -22,14 +22,14 @@ use lib 't/resources';
 use soup2;
 
 my \expectations = [
-    capital => '1167',
+    capital => 1167,
     primary_culture => 'bedouin',
     religion => 'sunni',
     government => 'absolute_monarchy',
-    plurality => '0.0',
+    plurality => 0.0,
     nationalvalue => 'nv_tradition',
-    literacy => '0.01',
-    non_state_culture_literacy => '0.01',
+    literacy => 0.01,
+    non_state_culture_literacy => 0.01,
 
     # Political reforms
     slavery => 'yes_slavery',
@@ -60,13 +60,13 @@ my \expectations = [
 
     ruling_party => 'ABU_conservative',
     upper_house => [
-        fascist => '0',
-        liberal => '10',
-        conservative => '75',
-        reactionary => '15',
-        anarcho_liberal => '0',
-        socialist => '0',
-        communist => '0',
+        fascist => 0,
+        liberal => 10,
+        conservative => 75,
+        reactionary => 15,
+        anarcho_liberal => 0,
+        socialist => 0,
+        communist => 0,
     ],
 
     set_country_flag => 'sunni_country',
@@ -77,18 +77,18 @@ my \expectations = [
     ],
 
     # Technologies
-    flintlock_rifles => '1',
+    flintlock_rifles => 1,
 
     # Inventions
-    small_arms_production => 'yes',
-    ammunition_production => 'yes',
-    #big_sail_ships => 'yes',
-    #sail_ships_transport => 'yes',
-    #big_sail_support => 'yes',
+    :small_arms_production,
+    :ammunition_production,
+    #:big_sail_ships,
+    #:sail_ships_transport,
+    #:big_sail_support,
 
     # Starting Consciousness
-    consciousness => '0',
-    nonstate_consciousness => '0',
+    consciousness => 0,
+    nonstate_consciousness => 0,
 
     oob => '"ABU_oob.txt"',
     '1861.1.1' => [
@@ -96,7 +96,7 @@ my \expectations = [
         foreign_weapons => 'yes_foreign_weapons',
 
         # Technologies
-        flintlock_rifles => '1',
+        flintlock_rifles => 1,
     ],
 ];
 

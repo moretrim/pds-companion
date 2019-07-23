@@ -18,7 +18,7 @@ use PDS;
 
 =head1 Whitespace/comments
 
-my \pds-script = q:to«end»;
+my \pds-script = q:to«END»;
   # a
 hello  # b
   # c
@@ -32,7 +32,7 @@ hello  # b
 
 
 = welt
-end
+END
 
 my \expectations = [
     'hello' => 'world',
