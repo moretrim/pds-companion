@@ -19,16 +19,35 @@ use PDS::Victoria2;
 
 =head1 Test file template
 
-my \pds-script = q:to«end»;
+my \pds-script = q:to«END»;
 country_event = {
+    id = 18
+    title = "EVTNAME00018"
+    desc = "EVTDESC00018"
+    picture = "ships"
+    major = no
+
+    is_triggered_only = yes
+
+    option = {
+        name = "do the thing"
+    }
 }
-end
+END
 
 my \expectations = [
-    country_event => []
+    country_event => [
+        id => 18,
+        title => '"EVTNAME00018"',
+        desc => '"EVTDESC00018"',
+        picture => '"ships"',
+        :!major,
+        :is_triggered_only,
+        option => [ name => '"do the thing"' ],
+    ]
 ];
 
-is-deeply soup(PDS::Victoria2::Events, pds-script), Nil;
+is-deeply soup(PDS::Victoria2::Events, pds-script), expectations;
 
 # use lib 't/resources';
 # use resource-mod;
