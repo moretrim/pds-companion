@@ -18,8 +18,8 @@ use PDS;
 
 =head1 Model file from HPM
 
-use lib 't/resources';
-use soup2;
+use lib 't';
+use resources::soup02;
 
 my \expectations = [
     capital => 1167,
@@ -100,6 +100,6 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, soup2::resource), expectations;
+is-deeply soup(PDS::Grammar, soup02::resource), expectations, "can we parse a representative country history file";
 
 done-testing;

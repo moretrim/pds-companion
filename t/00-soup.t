@@ -39,6 +39,6 @@ my \expectations = [
     '"hallo"' => 'welt',
 ];
 
-is-deeply soup(PDS::Grammar, pds-script), expectations;
+is-deeply soup(PDS::Grammar, pds-script), expectations, "can we handle whitespace and comments";
 
 done-testing;

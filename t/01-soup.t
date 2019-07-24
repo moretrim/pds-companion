@@ -18,8 +18,8 @@ use PDS;
 
 =head1 Model event file from HPM.
 
-use lib 't/resources';
-use soup1;
+use lib 't';
+use resources::soup01;
 
 my \expectations = [
     country_event => [
@@ -588,6 +588,6 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, soup1::resource), expectations;
+is-deeply soup(PDS::Grammar, soup01::resource), expectations, "can we parse a representative event file";
 
 done-testing;

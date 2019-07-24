@@ -1,4 +1,4 @@
-unit module soup1;
+unit module soup01;
 
 #| Originally HPM/events/HAIFlavor.txt.
 constant resource = q:to«END»;

@@ -47,7 +47,7 @@ my \expectations = [
     ]
 ];
 
-is-deeply soup(PDS::Victoria2::Events, pds-script), expectations;
+is-deeply soup(PDS::Victoria2::Events, pds-script), expectations, "can we parse a contry event";
 
 # use lib 't/resources';
 # use resource-mod;
