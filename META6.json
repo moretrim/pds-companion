@@ -15,5 +15,8 @@
         "remake":    "lib/remake.pm6",
         "unsorted":  "lib/unsorted.pm6",
         "PDS::Victoria2": "lib/PDS/Victoria2.pm6"
-    }
+    },
+    "test-depends": [
+        "Test::META"
+    ]
 }
