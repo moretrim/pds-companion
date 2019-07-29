@@ -4,7 +4,7 @@ License Terms
 PFH-Tools library
 -----------------
 
-© Copyright 2019 moretrim.
+Copyright © 2019 moretrim.
 
 PFH-Tools is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3 as
@@ -26,7 +26,7 @@ PFH-Tools test suite
 
 ### Test suite files
 
-© Copyright 2019 moretrim.
+Copyright © 2019 moretrim.
 
 [![cc0-icon]][cc0-license] To the extent possible under law, the author has waived all copyright and related or
 neighboring rights to the PFH-Tools test suite files (e.g. `t/soup-1.t`). This does not include test suite resources.
@@ -46,7 +46,7 @@ resource files may contain content from the software <cite>Victoria II</cite>, <
 Divided</cite>, or <cite>Victoria II: Heart of Darkness</cite>; or from community-developed modifications. The rights to
 this content go to their respective copyright holders.
 
-In particular <cite>Victoria II</cite> is © Copyright 2010 [Paradox Interactive], all rights reserved.
+In particular <cite>Victoria II</cite> is Copyright © 2010 [Paradox Interactive], all rights reserved.
 
 [Paradox Interactive]: https://www.paradoxplaza.com
 
