@@ -2,7 +2,7 @@ PFH-Tools
 =========
 
 Build status:
-[![travis-master][travis-master-image]](https://travis-ci.org/moretrim/PFH-Tools)
+[![travis-master][travis-master-image]](https://travis-ci.org/moretrim/PFH-Tools/branches)
 
 [travis-master-image]: https://travis-ci.org/moretrim/PFH-Tools.svg?branch=master
 
