@@ -1,4 +1,4 @@
-unit module soup02;
+unit module vic2-model-event00;
 
 #| Originally HPM/events/HAIFlavor.txt.
 constant resource = q:to«END»;

@@ -19,7 +19,7 @@ use PDS;
 my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
 
 use lib 't';
-use resources::soup02;
+use resources::vic2-model-event00;
 
 my \expectations = [
     country_event => [
@@ -588,10 +588,10 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, soup02::resource), expectations, "can we parse a representative event file";
+is-deeply soup(PDS::Grammar, vic2-model-event00::resource), expectations, "can we parse a representative event file";
 
 subtest "reject malformed inputs", {
-    my \script = soup02::resource;
+    my \script = vic2-model-event00::resource;
 
     for 1..18 -> \which {
         throws-like
