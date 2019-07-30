@@ -16,7 +16,7 @@ use lib 'lib';
 
 use PDS;
 
-=head1 Model file from HPM
+my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
 
 use lib 't';
 use resources::soup03;
@@ -100,6 +100,8 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, soup03::resource), expectations, "can we parse a representative country history file";
+is-deeply soup(PDS::Grammar, soup03::resource),
+    expectations,
+    "can we parse a representative country history file";
 
 done-testing;

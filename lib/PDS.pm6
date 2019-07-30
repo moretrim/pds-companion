@@ -19,9 +19,61 @@ along with PFH-Tools.  If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 #| Tools to help with modding Paradox Development Studio games.
 unit module PDS;
 
+# Dear Perl 6, why?
+#
+# Having real trouble calling a base role method, so resorting to meta-hackery instead (see `.^lookup` usage)—in turn
+# this appears to require disabling precompilation.
+no precompilation;
 use Grammar::ErrorReporting;
-# no precompilation;
 # use Grammar::Tracer;
+
+#| Base exception for all parsing errors.
+#|
+#| Thrown when a L<PDS::Grammar> reports an error.
+class GLOBAL::X::PDS::ParseError is X::Grammar::ParseError {
+    # from X::Grammar::ParseError, to make them mutable
+    has $.description      is rw;
+    has $.line             is rw;
+    has $.msg              is rw;
+    has $.error-position   is rw;
+    has $.context-string   is rw;
+    has $.goal             is rw;
+
+    has Str  $.source      is rw;
+    has Pair @.decorations is rw;
+
+    method message(--> Str:D) {
+        my \report = callsame;
+        my \source = ($.source andthen "‘$_’" orelse "<unspecified>");
+        my \decoration-header = @.decorations ?? ' with the following extra information:' !! '';
+        qq:to«END»;
+        While parsing {source}{decoration-header}{ @.decorations.map({ "\n    {.key} => {.value}" }) }
+        {report.trim-leading}
+        END
+    }
+}
+
+#| Role for easily reporting parsing errors.
+role ErrorReporting does Grammar::ErrorReporting {
+    #| Throw an L<X::PDS::ParseError>.
+    method error(
+        $msg,          #= reason for failure to parse
+        :$goal,        #= (unused)
+        **@decorations #= additional information
+    ) {
+        try Grammar::ErrorReporting.^lookup('error')(self, $msg, :$goal);
+        X::PDS::ParseError.new(
+            description => $!.description,
+            line => $!.line,
+            msg => $!.msg,
+            target => $!.target,
+            error-position => $!.error-position,
+            context-string => $!.context-string,
+            goal => $!.goal,
+            :@decorations,
+        ).throw
+    }
+}
 
 sub line-hint(Match:D $_ --> Int:D)
 {
@@ -43,14 +95,18 @@ class Remarks {
     }
 }
 
-#| A base for PDS script grammars.
+#| Base PDS script grammar.
 #|
-#| It is able to unsmartly parse most PDS script files, though the result will be an unstructured soup. Its main purpose
-#| is to be subclassed and reused in order to perform more structured parsing.
+#| Able to unsmartly parse script files N<L<PDS::Grammar> has been designed & validated around Victoria 2 files only>,
+#| though the result will be an unstructured soup. Its main purpose is to be subclassed and reused in order to perform
+#| more structured parsing.
 #|
 #| Remarks made during parsing can be accessed as the C<remarks> entry of the L<Associative> payload (see
 #| L<Match::made>).
-grammar Grammar does Grammar::ErrorReporting {
+#|
+#| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
+#| grammars.
+grammar Grammar does ErrorReporting {
     rule TOP {
         ^ @<entries>=<.entry>* $
     }
@@ -198,27 +254,47 @@ grammar Grammar does Grammar::ErrorReporting {
     }
 }
 
-our sub parse(Grammar \gram, IO:D(Cool:D) \path, Mu :$actions = Mu, Str:D :$enc = "windows-1252" --> Match:D)
+#| Parse some input against a L<PDS::Grammar>. Provides the following benefits over the stock L<Grammar::parse>:
+#|
+#| * always returns a defined result; throws if the grammar could not recognise the input
+#| * fills in appropriate exception information in case of a L<PDS::ParseError>
+our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu --> Match:D)
+{ * }
+
+#| Parse from a L<Str>.
+multi parse(Grammar \gram, Str:D() \input, Mu :$actions = Mu --> Match:D)
 {
     CATCH {
-        default {
-            # How do you decorate exceptions in Perl6?
-            "While attempting to parse {path}".note;
+        when X::PDS::ParseError {
+            .source = "<string>";
             .rethrow
         }
     }
-    gram.parse(path.slurp(:$enc), :$actions)
-        // die "Input rejected by grammar {gram.^name}."
+    gram.parse(input, :$actions)
+        // gram.error("rejected by grammar {gram.^name}.")
+}
+
+#| Parse from a file.
+multi parse(
+    Grammar \gram,
+    IO:D() \path,                 #= path to file
+    Str:D :$enc = "windows-1252", #= file encoding
+    Mu :$actions = Mu
+    --> Match:D
+) {
+    CATCH {
+        when X::PDS::ParseError {
+            .source = path.Str;
+            .rethrow
+        }
+    }
+    parse(gram, path.slurp(:$enc), :$actions)
 }
 
 our sub lint(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252")
 {
     my Remarks $actions = Remarks.new;
     my \soup = parse(gram, path, :$actions, :$enc);
-    unless soup.defined {
-        note "While attempting to parse {path}";
-        return
-    }
 
     if $actions.comment-remarks {
         $actions.format-remarks().say;
@@ -268,7 +344,7 @@ class Soup {
     }
 
     # These are not strictly speaking necessary thanks to FALLBACK, but do speed up the parsing by avoiding the generic
-    # handling.
+    # handling machinery.
 
     method entry($/)   { make($<soup>.made) }
     method pair($/)    { make($<key>.made => $<value>.made) }
@@ -281,5 +357,5 @@ class Soup {
 #| Turn PDS script into a tree-like array of items and pairs.
 our sub soup(Grammar \gram, Str:D \input --> Array) is export
 {
-    gram.parse(input, actions => Soup).made
+    parse(gram, input, actions => Soup).made
 }

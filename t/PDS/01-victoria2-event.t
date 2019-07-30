@@ -17,7 +17,7 @@ use lib 'lib';
 use PDS;
 use PDS::Victoria2;
 
-=head1 Test file template
+my PDS::Grammar \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
 
 my \pds-script = q:to«END»;
 country_event = {
@@ -26,6 +26,11 @@ country_event = {
     desc = "EVTDESC00018"
     picture = "ships"
     major = no
+
+    news = yes
+    news_desc_long   = "EVTDESC00018_NEWS_LONG"
+    news_desc_medium = "EVTDESC00018_NEWS_MEDIUM"
+    news_desc_short  = "EVTDESC00018_NEWS_SHORT"
 
     is_triggered_only = yes
 
@@ -42,12 +47,32 @@ my \expectations = [
         desc => '"EVTDESC00018"',
         picture => '"ships"',
         :!major,
+
+        :news,
+        news_desc_long => '"EVTDESC00018_NEWS_LONG"',
+        news_desc_medium => '"EVTDESC00018_NEWS_MEDIUM"',
+        news_desc_short => '"EVTDESC00018_NEWS_SHORT"',
+
         :is_triggered_only,
+
         option => [ name => '"do the thing"' ],
     ]
 ];
 
-is-deeply soup(PDS::Victoria2::Events, pds-script), expectations, "can we parse a contry event";
+is-deeply soup(event-grammar, pds-script), expectations, "can we parse a country event";
+
+subtest "reject malformed events", {
+    # skip id on line 1
+    my \no-id = pds-script.lines[0..^1, 1^..*].flat.join("\n");
+
+    throws-like
+        { soup(event-grammar, no-id) },
+        X::PDS::ParseError,
+        message =>
+            / "Cannot parse input: event is missing an ID" /
+            & / "at line 17" /,
+        "no event id provided to country event";
+}
 
 # use lib 't/resources';
 # use resource-mod;

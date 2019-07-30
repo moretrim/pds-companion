@@ -16,21 +16,31 @@ use lib 'lib';
 
 use PDS;
 
-=head1 Test file template
+my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
 
 my \pds-script = q:to«END»;
 END
 
 my \expectations = [
-    'hello' => 'world',
-    '"hallo"' => 'welt',
 ];
 
-is-deeply soup(PDS::Grammar, pds-script), expectations;
+is-deeply soup(test-grammar, pds-script), expectations, "can we parse the input";
 
 use lib 't/resources';
 use resource-mod;
 
-is-deeply soup(PDS::Grammar, resource-mod::resource), expectations;
+is-deeply soup(test-grammar, resource-mod::resource), expectations, "can we parse the resource";
+
+subtest "reject malformed inputs", {
+    my \malformed-script = pds-script;
+
+    throws-like
+        { soup(test-grammar, malformed-script) },
+        X::PDS::ParseError,
+        message =>
+            / "Cannot parse input: there was a note" /
+            & / "at line 1" /,
+        "malformed input was rejected";
+}
 
 done-testing;

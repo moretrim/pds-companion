@@ -16,7 +16,7 @@ use lib 'lib';
 
 use PDS;
 
-=head1 Model event file from HPM.
+my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
 
 use lib 't';
 use resources::soup02;
@@ -589,5 +589,45 @@ my \expectations = [
 ];
 
 is-deeply soup(PDS::Grammar, soup02::resource), expectations, "can we parse a representative event file";
+
+subtest "reject malformed inputs", {
+    my \script = soup02::resource;
+
+    for 1..18 -> \which {
+        throws-like
+            { soup(test-grammar, script.subst('}', '', nth => which)) },
+            X::PDS::ParseError,
+            message =>
+                / "Cannot parse input: no closing '}'" /
+                & / "at line " 493 /,
+            "malformed input was missing closing brace number {which}";
+    }
+
+    my \openers = script.comb('{').elems;
+
+    throws-like
+        { soup(test-grammar, script.subst('{', '', nth => 1)) },
+        X::PDS::ParseError,
+        message =>
+            / "Cannot parse input: rejected by grammar PDS::Grammar" /
+            & / "at line 0" /,
+        "malformed input was missing opening brace number 1";
+
+    my \locs = 7, 10, 16, 19, 24, 34, 36, 37, 37, 37, 0, 51;
+    my &reason = -> \which {
+        which != 12 ??
+        "no closing '}'" !!
+        "rejected by grammar PDS::Grammar"
+    }
+    for 2..* Z locs -> (\which, \loc) {
+        throws-like
+            { soup(test-grammar, script.subst('{', '', nth => which)) },
+            X::PDS::ParseError,
+            message =>
+                / "Cannot parse input: " $(reason(which)) /
+                & / "at line " $(loc) /,
+            "malformed input was missing opening brace number {which}";
+    }
+}
 
 done-testing;

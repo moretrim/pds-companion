@@ -46,15 +46,24 @@ our grammar Events is Base {
         :my $id = Int;
         '{' ~ '}' [
             | @<entries>=<id> { with @<id>[0]<value>.made { $id = $_ } }
+
             | @<entries>=<title>
             | @<entries>=<desc>
             | @<entries>=<picture>
             | @<entries>=<major>
-            | @<entries>=<trigger>
+
+            | @<entries>=<news>
+            | @<entries>=<news-desc-long>
+            | @<entries>=<news-desc-medium>
+            | @<entries>=<news-desc-short>
+
             | @<entries>=<is-triggered-only>
-            | @<entries>=<allow-multiple-instances>
             | @<entries>=<fire-only-once>
+            | @<entries>=<allow-multiple-instances>
+
+            | @<entries>=<trigger>
             | @<entries>=<mean-time-to-happen>
+
             | @<entries=options>=<.option($id)>
         ]*
         {} <validate-event-block($/)>
@@ -82,8 +91,10 @@ our grammar Events is Base {
             default { self.error("event $id has too many descriptions") }
         }
 
-        for <picture major trigger is-triggered-only allow-multiple-instances
-             fire-only-once mean-time-to-happen> -> $entry {
+        for <picture major
+             news news-desc-long news-desc-medium news-desc-short
+             is-triggered-only fire-only-once allow-multiple-instances
+             trigger mean-time-to-happen> -> $entry {
             if .{$entry}.elems > 1 {
                 self.error("event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
             }
@@ -96,7 +107,26 @@ our grammar Events is Base {
             END
         }
 
-        if .<is-triggered-only>[0]<value>.made {
+        my \news-descs = <news-desc-long news-desc-medium news-desc-short>;
+        if .<news>[0]<value> andthen .made {
+            my @missing-descs;
+            news-descs
+                ==> grep({ $match{$_}[0]:!exists })
+                ==> @missing-descs;
+            self.error(qq:to«END».chomp) if @missing-descs;
+            event $id is missing some news descriptions ({@missing-descs».subst('-', '_', :g).join(', ')})
+            END
+        } elsif news-descs.map({ $match{$_}.elems }).sum != 0 {
+            # my @extra-descs;
+            # news-descs
+            #     ==> grep({ $match{$_}[0]:exists })
+            #     ==> @extra-descs;
+            # self.error(qq:to«END».chomp) if @extra-descs;
+            # event $id set to no news, but has news descriptions ({@extra-descs».subst('-', '_', :g).join(', ')})
+            # END
+        }
+
+        if .<is-triggered-only>[0]<value> andthen .made {
             given $match<trigger>, $match<mean-time-to-happen> {
                 when (), *.elems { self.error(qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
@@ -116,14 +146,20 @@ our grammar Events is Base {
     rule desc                     { $<key>=('desc')                     '=' <value=.text>     }
     rule picture                  { $<key>=('picture')                  '=' <value=.text>     }
     rule major                    { $<key>=('major')                    '=' <value=.yes-or-no> }
+
+    rule news                     { $<key>=('news')                     '=' <value=.yes-or-no> }
+    rule news-desc-long           { $<key>=('news_desc_long')           '=' <value=.text> }
+    rule news-desc-medium         { $<key>=('news_desc_medium')         '=' <value=.text> }
+    rule news-desc-short          { $<key>=('news_desc_short')          '=' <value=.text> }
+
     rule is-triggered-only        { $<key>=('is_triggered_only')        '=' <value=.yes-or-no> }
-    rule allow-multiple-instances { $<key>=('allow_multiple_instances') '=' <value=.yes-or-no> }
     rule fire-only-once           { $<key>=('fire_only_once')           '=' <value=.yes-or-no> }
+    rule allow-multiple-instances { $<key>=('allow_multiple_instances') '=' <value=.yes-or-no> }
 
-    rule trigger             { $<key>=('trigger')             '=' <value=.condition> }
-    rule mean-time-to-happen { $<key>=('mean_time_to_happen') '=' <value=.block> }
+    rule trigger                  { $<key>=('trigger')                  '=' <value=.condition> }
+    rule mean-time-to-happen      { $<key>=('mean_time_to_happen')      '=' <value=.block> }
 
-    rule option(Int $id) { $<key>=('option') '=' <value=.option-block($id)> }
+    rule option(Int $id)          { $<key>=('option')                   '=' <value=.option-block($id)> }
 
     rule option-block(Int $id) {
         '{' ~ '}' [
