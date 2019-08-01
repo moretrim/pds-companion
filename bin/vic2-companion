@@ -1,0 +1,244 @@
+#!/usr/bin/env perl6
+
+use lib 'lib';
+use PDS;
+use PDS::Victoria2;
+
+sub path-components(IO:D \path --> List:D)
+{ path.SPEC.splitdir(path) }
+
+#| Example: C<path-matches("path/to/a/b/c.txt".IO, <a b c.txt>)>
+sub path-matches(IO:D \path, Positional \components --> Bool:D)
+{
+    my \path-comps = path-components(path);
+
+    components.elems <= path-comps.elems &&
+    # from most to least specific component part
+    [&&] path-comps.reverse Zeq components.reverse
+}
+
+sub is-whitelisted(IO:D \path, Positional \whitelist --> Bool:D)
+{
+    so whitelist.any ~~ {
+        .basename eq path.basename
+        && path-matches(path, path-components(.dirname.IO))
+    }
+}
+
+constant victoria2-grammars = (
+    # not ready yet
+    # PDS::Victoria2::Events,
+);
+
+constant victoria2-fallback = PDS::Grammar;
+
+# MAIN parameter constraints
+
+subset Path             of Str;
+subset Positive         of Int where 0 < *;
+subset OptionalPositive of Int where Any:U|Positive|Bool;
+subset OptionalPath     of Any where Any:U|Str|Bool;
+enum   When              « never always auto »;
+
+#| Perform static analysis of Victoria 2 game files.
+unit sub MAIN(
+    #| game or mod paths to analyse recursively (relative to <base> when specified, current working directory otherwise)
+    **@paths,
+
+    #| base path to game or mod files
+    Path :$base is copy,
+
+    #| comma separated list of extensions for the files of interest (default: ‘txt’)
+    Str :$exts = "txt",
+
+    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
+    #| flag is set: ‘whitelist’)
+    OptionalPath :$whitelist is copy,
+
+    #| periodically emit a heartbeat message, useful during long processings (interval in seconds, default if flag is
+    #| set: 30s)
+    OptionalPositive :$heartbeat is copy,
+
+    #| number of parallel jobs (default: 1.25 × number of cores, rounded)
+    Positive :j(:$jobs) = round(1.25 * $*KERNEL.cpu-cores),
+
+    #| when to colourise the output (default: ‘auto’), but note that colour output can only be performed if
+    #| Terminal::ANSIColor is installed
+    When :colour(:$color) = When::auto,
+);
+
+# process arguments
+
+my &style-with-colours = do if (Nil !=== try require Terminal::ANSIColor)
+                               && ($color eqv When::always || ($color eqv When::auto && $*OUT.t)) {
+    ::("Terminal::ANSIColor::EXPORT::DEFAULT::&colored")
+} else {
+    sub plain(\text, $) { text }
+};
+
+my \exts = $exts.split(",")».fc.any;
+my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
+my Bool:D \base-provided = $base.defined;
+
+my @files = gather {
+    my @pending = @requests;
+    while @pending {
+        with @pending.shift {
+            when :d { @pending.append(.dir) }
+            .take when .extension(:parts(^Inf)).fc ~~ *.ends-with(exts);
+        }
+    }
+}
+
+$heartbeat = do given $heartbeat -> $_ --> Int {
+    when * eqv True  { 30 }
+    when * eqv False { Nil }
+    default          { $_ andthen .Int orelse Nil }
+}
+
+$whitelist = do given $whitelist -> $_ --> Str {
+    when * eqv True  { "whitelist" }
+    when * eqv False { Nil }
+    default          { $_ andthen .Str orelse Nil }
+}
+my List \whitelist = do with $whitelist { .IO.lines.grep(''.none)».&{.trim.IO.cleanup} } // ();
+
+# more preliminaries
+
+sub note-warning(Str:D \msg --> Bool:D)
+{
+    constant header = "WARNING";
+    constant styles = "bold red";
+    my \lines = msg.split("\n");
+
+    if lines.elems <= 1 {
+        my \styled-header       = style-with-colours("‣ {header}", styles);
+
+        note "{styled-header} {lines[0]}"
+    } else {
+        my \styled-header       = style-with-colours("┌ {header}", styles);
+        my \styled-continuation = style-with-colours("│ ", styles);
+        my \styled-closer       = style-with-colours("└ ", styles);
+
+        note qq:to«END».chomp
+        {styled-header} {lines[0]}{lines[1..^(*-1)].map("\n" ~ styled-continuation ~ *).join}
+        {styled-closer}{lines[(*-1)..*]}
+        END
+    }
+}
+
+sub process-file(IO:D \file --> Pair:D)
+{
+    my \dir = file.SPEC.catdir(path-components(file)[^(*-1)]).IO;
+    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.list) });
+    if candidates.elems > 1 {
+        note-warning qq:to«END».chomp
+        File ‘{file.path}’ is ambiguous because its path matches the following:
+        • {candidates.map({ "‘{.where.join("/")}’ for {.descr}" }).join("\n• ")}
+        It is being treated as if it were part of the {candidates[0].descr}.
+        Possible fix: point $*PROGRAM-NAME to a higher base path to help disambiguate.
+        END
+    }
+    my \grammar = candidates ?? candidates[0] !! victoria2-fallback;
+
+    # condense entire match to concrete result
+    # this avoids carrying around file contents inside (sometimes huge) ast pieces
+    (file) => (my \result = PDS::parse(grammar, file) andthen .Bool orelse result)
+}
+
+# get started
+
+if @files.elems == 0 {
+    if @requests {
+        print qq:to«END»;
+        $*PROGRAM-NAME found no files to process.
+        END
+    } else {
+        print qq:to«END»;
+        $*PROGRAM-NAME had no files to process because no path was specified. If this was not what you intended, see usage with `$*PROGRAM-NAME --help`.
+        END
+    }
+    return
+} else {
+    say "$*PROGRAM-NAME is processing {@files.elems} {@files.elems == 1 ?? "file" !! "files"}...";
+    $*OUT.flush;
+}
+
+package status { enum status «success expected-failure failure unexpected-success»; }
+
+sub by-status((:key($path), :value($result))) {
+    given is-whitelisted($path, whitelist), $result {
+        when !*, Failure.none { status::success }
+        when ?*, Failure      { status::expected-failure }
+        when !*, Failure      { status::failure }
+        when ?*, Failure.none { status::unexpected-success }
+    }
+}
+
+# do the work
+
+my \heartbeats = do with $heartbeat { Supply.interval($_, $_).map({ now.DateTime.local.hh-mm-ss }) };
+my \processing = start
+    @files
+    .race(degree => $jobs, :1batch)
+    .map(&process-file)
+    .classify(&by-status);
+
+my \start = now;
+my \results = await supply {
+    with heartbeats {
+        whenever heartbeats {
+            say " ...processing ($_)..."
+        }
+    }
+
+    whenever processing {
+        .emit;
+        done
+    }
+}
+my \stop = now;
+my \duration = stop - start;
+
+# report results
+
+my \count-width = [max] results.values.map({ .elems.chars });
+
+my \number = {
+    file => { $_ <= 1 ?? "file " !! "files" },
+    it   => { $_ <= 1 ?? "it"    !! "they" },
+    was  => { $_ <= 1 ?? "was"   !! "were" },
+};
+
+sub style-outcome(\items, &descr, \styles, Bool :$explain)
+{
+    if items {
+        my \count = items.elems;
+        my \fancied = style-with-colours("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
+
+        my \explanations = do if $explain {
+            ":\n\n" ~ do if items».value.any ~~ Failure {
+                items».&{ given .value { .exception ~ .backtrace.nice } }.join("\n").indent(4)
+            } else {
+                items».key.join("\n").indent(4)
+            }
+        } else {
+            "."
+        }
+
+        "  • {fancied} {descr(count)}{explanations}\n"
+    } else {
+        Nil
+    }
+}
+
+put qq:to«END»;
+Processed all {@files.elems <= 1 ?? "file" !! "files"} in {duration.fmt("%.2fs")}:
+END
+
+.print with style-outcome(results{status::success}, { "{number<was>($_)} successfully accepted" }, "green");
+.print with style-outcome(results{status::expected-failure}, { "from the whitelist {number<was>($_)} rejected as expected" }, "green");
+.print with style-outcome(results{status::failure}, { "{number<was>($_)} unexpectedly rejected" }, "red", :explain);
+.print with style-outcome(results{status::unexpected-success}, { "from the whitelist {number<was>($_)} accepted when {number<it>($_)} should have been rejected" }, "red", :explain);
+
+exit(1) if results{status::failure}.any | results{status::unexpected-success}.any

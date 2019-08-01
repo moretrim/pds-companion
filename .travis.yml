@@ -65,15 +65,14 @@ matrix:
             # fetch & prepare HPM
             HPM_0_4_5=https://github.com/arkhometha/Historical-Project-Mod/archive/v0.4.5.2.zip
             wget -O HPM.zip "$HPM_0_4_5"
-            unzip HPM.zip
+            unzip -q HPM.zip
             mv Historical-Project-Mod-0.4.5.2 HPM
             cat >hpm.whitelist <<EOF
-              hpm/news/news_fake_default.txt
+              news/news_fake_default.txt
         EOF
 
             # run regression test
-            # low parallelism to avoid memory exhaustion
-            vic2-companion -j=1 --heartbeat --whitelist=hpm.whitelist --base=HPM/HPM .
+            vic2-companion --heartbeat --whitelist=hpm.whitelist --base=HPM/HPM .
           '
 
     -
@@ -115,12 +114,11 @@ matrix:
             HFM_1_27_F=38ca75c40063e08cbf696140e0ea68d76e6ace9d
             fetch_single_commit HFM https://github.com/SighPie/HFM.git "$HFM_1_27_F"
             cat >hfm.whitelist <<EOF
-              hfm/history/countries/GRE - Greece.txt
-              hfm/map/province_flag_sprites/kiel_canal.txt
-              hfm/map/province_flag_sprites/suez_canal.txt
+              history/countries/GRE - Greece.txt
+              map/province_flag_sprites/kiel_canal.txt
+              map/province_flag_sprites/suez_canal.txt
         EOF
 
             # run regression test
-            # low parallelism to avoid memory exhaustion
-            vic2-companion -j=1 --heartbeat --whitelist=hfm.whitelist --base=HFM/HFM .
+            vic2-companion --heartbeat --whitelist=hfm.whitelist --base=HFM/HFM .
           '
