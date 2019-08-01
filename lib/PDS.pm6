@@ -19,13 +19,7 @@ along with PFH-Tools.  If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 #| Tools to help with modding Paradox Development Studio games.
 unit module PDS;
 
-# Dear Perl 6, why?
-#
-# Having real trouble calling a base role method, so resorting to meta-hackery instead (see `.^lookup` usage)—in turn
-# this appears to require disabling precompilation.
-no precompilation;
 use Grammar::ErrorReporting;
-# use Grammar::Tracer;
 
 sub fancier()
 {
@@ -73,17 +67,40 @@ role ErrorReporting does Grammar::ErrorReporting {
         :$goal,        #= (unused)
         **@decorations #= additional information
     ) {
-        try Grammar::ErrorReporting.^lookup('error')(self, $msg, :$goal);
-        X::PDS::ParseError.new(
-            description => $!.description,
-            line => $!.line,
-            msg => $!.msg,
-            target => $!.target,
-            error-position => $!.error-position,
-            context-string => $!.context-string,
-            goal => $!.goal,
-            :@decorations,
-        ).throw
+        # ideally
+        # try nextwith($msg, :$goal);
+
+        # meta-hack, requires disabling precompilation
+        # try Grammar::ErrorReporting.^lookup('error')(self, $msg, :$goal);
+
+        # instead, we clone and imbue with the base role
+        try (Match.new(
+            :$.hash,
+            :$.list,
+            :$.from,
+            :$.orig,
+            :$.pos,
+            :$.made,
+        ) but Grammar::ErrorReporting).error($msg, :$goal);
+
+        given $! {
+            when X::Grammar::ParseError {
+                X::PDS::ParseError.new(
+                    description => .description,
+                    line => .line,
+                    msg => .msg,
+                    target => .target,
+                    error-position => .error-position,
+                    context-string => .context-string,
+                    goal => .goal,
+                    :@decorations,
+                ).throw
+            }
+
+            default {
+                .throw
+            }
+        }
     }
 }
 
