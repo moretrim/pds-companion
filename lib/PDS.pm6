@@ -268,7 +268,7 @@ grammar Grammar does ErrorReporting {
 
 #| Parse some input against a L<PDS::Grammar>. Provides the following benefits over the stock L<Grammar::parse>:
 #|
-#| * always returns a defined result; throws if the grammar could not recognise the input
+#| * either returns a defined result or fails if something went wrong
 #| * fills in appropriate exception information in case of a L<PDS::ParseError>
 our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu --> Match:D)
 { * }
@@ -279,8 +279,9 @@ multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu --> Match:D
     CATCH {
         when X::PDS::ParseError {
             .source = "<string>";
-            .rethrow
+            .fail
         }
+        default { .fail }
     }
     $gram = $gram // $gram.new;
     $gram.parse(input, :$actions)
@@ -298,10 +299,11 @@ multi parse(
     CATCH {
         when X::PDS::ParseError {
             .source = path.Str;
-            .rethrow
+            .fail
         }
+        default { .fail }
     }
-    parse(gram, path.slurp(:$enc), :$actions)
+    parse(gram, path.slurp(:$enc), :$actions).self
 }
 
 our sub lint(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252")
@@ -368,7 +370,9 @@ class Soup {
 }
 
 #| Turn PDS script into a tree-like array of items and pairs.
-our sub soup(Grammar \gram, Str:D \input --> Array) is export
+#|
+#| Throws but does not fail, unlike L<PDS::Parse>.
+our sub soup(Grammar \gram, Str:D \input --> Array:D) is export
 {
     parse(gram, input, actions => Soup).made
 }
