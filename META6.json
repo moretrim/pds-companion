@@ -1,9 +1,9 @@
 {
     "perl": "6.d",
-    "name": "PFH-Tools",
-    "description": "Crude tools that no one should be using.",
+    "name": "pds-guide",
+    "description": "Static analysis for modding Victoria II",
     "auth": "github:moretrim",
-    "source-url": "https://github.com/moretrim/PFH-Tools.git",
+    "source-url": "https://github.com/moretrim/pds-guide.git",
     "license": "GPL-3.0-only",
     "version": "0.2.0-dev",
     "api": "0",

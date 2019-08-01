@@ -1,21 +1,21 @@
-PFH-Tools
-=========
+The Victoria 2 Modder’s Guide
+=============================
 
 Build status:
-[![travis-master][travis-master-image]](https://travis-ci.org/moretrim/PFH-Tools/branches)
+[![travis-master][travis-master-image]](https://travis-ci.org/moretrim/pds-guide/branches)
 
-[travis-master-image]: https://travis-ci.org/moretrim/PFH-Tools.svg?branch=master
+[travis-master-image]: https://travis-ci.org/moretrim/pds-guide.svg?branch=master
 
 [Obtain the latest release.][RELEASE]
 
-[RELEASE]: https://github.com/moretrim/PFH-Tools/releases/latest
+[RELEASE]: https://github.com/moretrim/pds-guide/releases/latest
 
-Crude tools that no one should be using.
+A suite of static analysis tools for Victoria 2 modding.
 
 License
 -------
 
-PFH-Tools is available under the terms of the GNU General Public License version 3. See the accompanying
+pds-guide is available under the terms of the GNU General Public License version 3. See the accompanying
 [`LICENSE.markdown`][license] file for more information.
 
 [license]: ./LICENSE.markdown
@@ -27,6 +27,4 @@ Release history
 
 ### 0.1.0-alpha
 
-The initial alpha release. A pure library designed for, and tied to [PFH]. Not really suitable for public consumption.
-
-[PFH]: https://github.com/moretrim/PFH
+An alpha release. Not suitable for general consumption.

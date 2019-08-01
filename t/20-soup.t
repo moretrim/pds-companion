@@ -1,7 +1,7 @@
 =begin COPYRIGHT
 Copyright © 2019 moretrim.
 
-This file is part of the test suite for PFH-Tools.
+This file is part of the test suite for pds-guide.
 
 To the extent possible under law, the author has waived all copyright
 and related or neighboring rights to this file. This work is published
