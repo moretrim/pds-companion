@@ -27,6 +27,17 @@ no precompilation;
 use Grammar::ErrorReporting;
 # use Grammar::Tracer;
 
+sub fancier()
+{
+    if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
+        ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored')
+    } else {
+        sub plain(\text, $) { text }
+    }
+}
+
+constant &fancy = fancier();
+
 #| Base exception for all parsing errors.
 #|
 #| Thrown when a L<PDS::Grammar> reports an error.
@@ -44,11 +55,11 @@ class GLOBAL::X::PDS::ParseError is X::Grammar::ParseError {
 
     method message(--> Str:D) {
         my \report = callsame;
-        my \source = ($.source andthen "‘$_’" orelse "<unspecified>");
+        my \source = ($.source andthen "‘{fancy($_, "cyan")}’" orelse fancy("<unspecified>", "red"));
         my \decoration-header = @.decorations ?? ' with the following extra information:' !! '';
-        qq:to«END»;
+        qq:to«END».chomp;
         While parsing {source}{decoration-header}{ @.decorations.map({ "\n    {.key} => {.value}" }) }
-        {report.trim-leading}
+        {report.trim}
         END
     }
 }
