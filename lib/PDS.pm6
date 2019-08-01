@@ -68,6 +68,7 @@ class GLOBAL::X::PDS::ParseError is X::Grammar::ParseError {
 role ErrorReporting does Grammar::ErrorReporting {
     #| Throw an L<X::PDS::ParseError>.
     method error(
+        ::?CLASS:D:
         $msg,          #= reason for failure to parse
         :$goal,        #= (unused)
         **@decorations #= additional information
@@ -273,7 +274,7 @@ our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu --> Match:D)
 { * }
 
 #| Parse from a L<Str>.
-multi parse(Grammar \gram, Str:D() \input, Mu :$actions = Mu --> Match:D)
+multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu --> Match:D)
 {
     CATCH {
         when X::PDS::ParseError {
@@ -281,8 +282,9 @@ multi parse(Grammar \gram, Str:D() \input, Mu :$actions = Mu --> Match:D)
             .rethrow
         }
     }
-    gram.parse(input, :$actions)
-        // gram.error("rejected by grammar {gram.^name}.")
+    $gram = $gram // $gram.new;
+    $gram.parse(input, :$actions)
+        // $gram.error("rejected by grammar {$gram.^name}.")
 }
 
 #| Parse from a file.
