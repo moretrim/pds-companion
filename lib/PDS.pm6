@@ -285,8 +285,9 @@ grammar Grammar does ErrorReporting {
 
 #| Parse some input against a L<PDS::Grammar>. Provides the following benefits over the stock L<Grammar::parse>:
 #|
-#| * either returns a defined result or fails if something went wrong
-#| * fills in appropriate exception information in case of a L<PDS::ParseError>
+#| * fails with L<PDS::ParseError> (with appropriate information filled-in) if parsing was not succesful, or returns a
+#|   L<Match>
+#| * throws in case of a different error
 our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu --> Match:D)
 { * }
 
@@ -298,7 +299,7 @@ multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu --> Match:D
             .source = "<string>";
             .fail
         }
-        default { .fail }
+        default { .rethrow }
     }
     $gram = $gram // $gram.new;
     $gram.parse(input, :$actions)
@@ -318,19 +319,9 @@ multi parse(
             .source = path.Str;
             .fail
         }
-        default { .fail }
+        default { .rethrow }
     }
     parse(gram, path.slurp(:$enc), :$actions).self
-}
-
-our sub lint(Grammar \gram, IO:D(Cool:D) \path, Str:D :$enc = "windows-1252")
-{
-    my Remarks $actions = Remarks.new;
-    my \soup = parse(gram, path, :$actions, :$enc);
-
-    if $actions.comment-remarks {
-        $actions.format-remarks().say;
-    }
 }
 
 class Soup {
