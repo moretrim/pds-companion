@@ -9,22 +9,118 @@ services:
 
 # Container setup.
 before_install:
-  - docker pull jjmerelo/test-perl6
+  - |
+    docker build -t perl6-ci - <<EOF
+      FROM jjmerelo/test-perl6
+      RUN apk add --no-cache bash
+      # skip here-document terminator due to Travis silliness; produces a warning
   - docker images
 
-# Run the tests.
-script: |
-  docker run -t \
-    --name container-env \
-    --volume "$TRAVIS_BUILD_DIR":/test \
-    --entrypoint sh \
-    jjmerelo/test-perl6 -c '
-      # fail on first error
-      set -e
+env:
+    global:
+        regression: 0
 
-      # No testing the dependencies.
-      zef install --/test --deps-only .
+matrix:
+  fast_finish: true
+  allow_failures:
+      - regression: 1
 
-      # Run tests and test installation.
-      zef install .
-    '
+  include:
+    -
+      name: "Tests"
+      script: |
+        docker run -t \
+          --name container-env \
+          --volume "$TRAVIS_BUILD_DIR":/test \
+          --entrypoint bash \
+          perl6-ci -c '
+            # fail on first error
+            set -Eeuo pipefail
+
+            # no testing the dependencies
+            zef install --/test --deps-only .
+
+            # run tests and test installation
+            zef install .
+          '
+
+    -
+      name: "HPM Regression Testing"
+      regression: 1
+      script: |
+        docker run -t \
+          --name container-env \
+          --volume "$TRAVIS_BUILD_DIR":/test \
+          --entrypoint bash \
+          perl6-ci -c '
+            # fail on first error
+            set -Eeuo pipefail
+
+            # no testing the dependencies
+            zef install --/test --deps-only .
+
+            # install, no testing
+            zef install --/test .
+
+            # fetch & prepare HPM
+            HPM_0_4_5=https://github.com/arkhometha/Historical-Project-Mod/archive/v0.4.5.2.zip
+            wget -O HPM.zip "$HPM_0_4_5"
+            unzip HPM.zip
+            mv Historical-Project-Mod-0.4.5.2 HPM
+            cat >hpm.whitelist <<EOF
+              hpm/news/news_fake_default.txt
+        EOF
+
+            # run regression test
+            # low parallelism to avoid memory exhaustion
+            vic2-companion -j=1 --heartbeat --whitelist=hpm.whitelist --base=HPM/HPM .
+          '
+
+    -
+      name: "HFM Regression Testing"
+      regression: 1
+      script: |
+        docker run -t \
+          --name container-env \
+          --volume "$TRAVIS_BUILD_DIR":/test \
+          --entrypoint bash \
+          perl6-ci -c '
+            # fail on first error
+            set -Eeuo pipefail
+
+            # no testing the dependencies
+            zef install --/test --deps-only .
+
+            # install, no testing
+            zef install --/test .
+
+            fetch_single_commit()
+            {
+              [ "$#" -eq 3 ] || die "invalid number of arguments"
+              dest="$1"
+              repo="$2"
+              rev="$3"
+
+              mkdir "$dest" && pushd "$dest"
+
+              git init \
+                && git remote add origin "$repo" \
+                && git fetch --depth 1 origin "$rev" \
+                && git reset --hard FETCH_HEAD
+
+              popd
+            }
+
+            # fetch & prepare HFM
+            HFM_1_27_F=38ca75c40063e08cbf696140e0ea68d76e6ace9d
+            fetch_single_commit HFM https://github.com/SighPie/HFM.git "$HFM_1_27_F"
+            cat >hfm.whitelist <<EOF
+              hfm/history/countries/GRE - Greece.txt
+              hfm/map/province_flag_sprites/kiel_canal.txt
+              hfm/map/province_flag_sprites/suez_canal.txt
+        EOF
+
+            # run regression test
+            # low parallelism to avoid memory exhaustion
+            vic2-companion -j=1 --heartbeat --whitelist=hfm.whitelist --base=HFM/HFM .
+          '
