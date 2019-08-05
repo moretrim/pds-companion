@@ -21,16 +21,11 @@ unit module PDS;
 
 use Grammar::ErrorReporting;
 
-sub fancier()
-{
-    if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
-        ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored')
-    } else {
-        sub plain(\text, $) { text }
-    }
-}
-
-constant &fancy = fancier();
+constant &fancy = do if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
+    ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored')
+} else {
+    sub plain(\text, $) { text }
+};
 
 #| Base exception for all parsing errors.
 #|
