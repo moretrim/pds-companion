@@ -29,7 +29,7 @@ pds-companion test suite
 Copyright © 2019 moretrim.
 
 [![cc0-icon]][cc0-license] To the extent possible under law, the author has waived all copyright and related or
-neighboring rights to the pds-companion test suite files (e.g. `t/soup-1.t`). This does not include test suite
+neighboring rights to the pds-companion test suite files (e.g. `t/20-soup.t`). This does not include test suite
 resources. This work is published from France.
 
 A copy of of the CC0 1.0 Universal license is also provided (a file entitled [`CC0`]). If not, see
@@ -41,10 +41,10 @@ A copy of of the CC0 1.0 Universal license is also provided (a file entitled [`C
 
 ### Test suite resources
 
-For the purposes of software testing, the test suite includes some resource files (e.g. `t/resources/soup-1.pm6`). These
-resource files may contain content from the software <cite>Victoria II</cite>, <cite>Victoria II: A House
-Divided</cite>, or <cite>Victoria II: Heart of Darkness</cite>; or from community-developed modifications. The rights to
-this content go to their respective copyright holders.
+For the purposes of software testing, the test suite includes some resource files (e.g.
+`t/resources/vic2-model-event00.pm6`). These resource files may contain content from the software <cite>Victoria
+II</cite>, <cite>Victoria II: A House Divided</cite>, or <cite>Victoria II: Heart of Darkness</cite>; or from
+community-developed modifications. The rights to this content go to their respective copyright holders.
 
 In particular <cite>Victoria II</cite> is Copyright © 2010 [Paradox Interactive], all rights reserved.
 
