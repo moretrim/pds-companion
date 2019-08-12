@@ -1,36 +1,36 @@
 License Terms
 =============
 
-pds-guide library
------------------
+pds-companion library
+---------------------
 
 Copyright © 2019 moretrim.
 
-pds-guide is free software: you can redistribute it and/or modify
+pds-companion is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3 as
 published by the Free Software Foundation.
 
-pds-guide is distributed in the hope that it will be useful,
+pds-companion is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-version 3 along with pds-guide (a file entitled [`COPYING`]). If not,
+version 3 along with pds-companion (a file entitled [`COPYING`]). If not,
 see <https://www.gnu.org/licenses/gpl-3.0.html>.
 
 [`COPYING`]: ./COPYING
 
-pds-guide test suite
---------------------
+pds-companion test suite
+------------------------
 
 ### Test suite files
 
 Copyright © 2019 moretrim.
 
 [![cc0-icon]][cc0-license] To the extent possible under law, the author has waived all copyright and related or
-neighboring rights to the pds-guide test suite files (e.g. `t/soup-1.t`). This does not include test suite resources.
-This work is published from France.
+neighboring rights to the pds-companion test suite files (e.g. `t/soup-1.t`). This does not include test suite
+resources. This work is published from France.
 
 A copy of of the CC0 1.0 Universal license is also provided (a file entitled [`CC0`]). If not, see
 <https://creativecommons.org/publicdomain/zero/1.0/>.

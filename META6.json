@@ -1,9 +1,9 @@
 {
     "perl": "6.d",
-    "name": "pds-guide",
+    "name": "pds-companion",
     "description": "Static analysis for modding Victoria II",
     "auth": "github:moretrim",
-    "source-url": "https://github.com/moretrim/pds-guide.git",
+    "source-url": "https://github.com/moretrim/pds-companion.git",
     "license": "GPL-3.0-only",
     "version": "0.2.0-dev",
     "api": "0",
