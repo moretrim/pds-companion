@@ -32,6 +32,9 @@ our grammar Base is PDS::Grammar {
 
 #| Parse an event file.
 our grammar Events is Base {
+    method where { <events> };
+    method descr { "event files" };
+
     rule TOP {
         ^ [
             | @<entries=country-events>=<.country-event>
