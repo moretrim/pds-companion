@@ -45,7 +45,7 @@ our grammar Events is Base {
     rule country-event-block {
         :my $id = Int;
         '{' ~ '}' [
-            | @<entries>=<id> { with @<id>[0]<value>.made { $id = $_ } }
+            | @<entries>=<id> { with @<id>[0]<value>.Int { $id = $_ } }
 
             | @<entries>=<title>
             | @<entries>=<desc>
@@ -77,7 +77,7 @@ our grammar Events is Base {
             when 0  { self.error("event is missing an ID") }
             default { self.error("event has too many IDs") }
         }
-        my Int $id = .<id>[0]<value>.made;
+        my Int $id = .<id>[0]<value>.Int;
 
         given .<title>.elems {
             when 1  { #`(fine) }
@@ -102,13 +102,13 @@ our grammar Events is Base {
 
         given (.<picture>, .<major>)».elems.sum {
             when 0  { self.error("event $id is missing a picture") }
-            when 2  { self.error(qq:to«END».chomp) if $match.<major>[0]<value>.made; }
+            when 2  { self.error(qq:to«END».chomp) if $match<major>[0]<value> eq 'yes'; }
             event $id is major and has a picture (no picture is required for major events)
             END
         }
 
         my \news-descs = <news-desc-long news-desc-medium news-desc-short>;
-        if .<news>[0]<value> andthen .made {
+        if .<news>[0]<value> andthen $_ eq 'yes' {
             my @missing-descs;
             news-descs
                 ==> grep({ $match{$_}[0]:!exists })
@@ -126,7 +126,7 @@ our grammar Events is Base {
             # END
         }
 
-        if .<is-triggered-only>[0]<value> andthen .made {
+        if .<is-triggered-only>[0]<value> andthen $_ eq 'yes' {
             given $match<trigger>, $match<mean-time-to-happen> {
                 when (), *.elems { self.error(qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
