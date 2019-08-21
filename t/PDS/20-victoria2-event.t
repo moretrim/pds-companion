@@ -72,11 +72,21 @@ subtest "reject malformed events", {
             / "Cannot parse input: event is missing an ID" /
             & / "at line 17" /,
         "no event id provided to country event";
+
+    # picture + major
+    my \picture-major = (
+        |pds-script.lines[^5],
+        "    major = yes",
+        |pds-script.lines[6..*],
+    ).flat.join("\n");
+
+    throws-like
+        { soup(event-grammar, picture-major) },
+        X::PDS::ParseError,
+        message =>
+            / "Cannot parse input: event 18 is major and has a picture" /
+            & / "at line 18" /,
+        "picture set for major country event";
 }
-
-# use lib 't/resources';
-# use resource-mod;
-
-# is-deeply soup(PDS::Grammar, resource-mod::resource), expectations;
 
 done-testing;
