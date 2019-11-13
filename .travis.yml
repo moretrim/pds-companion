@@ -59,6 +59,9 @@ matrix:
             # no testing the dependencies
             zef install --/test --deps-only .
 
+            # optional, for colour
+            zef install --/test Terminal::ANSIColor || true
+
             # install, no testing
             zef install --/test .
 
@@ -89,6 +92,9 @@ matrix:
 
             # no testing the dependencies
             zef install --/test --deps-only .
+
+            # optional, for colour
+            zef install --/test Terminal::ANSIColor || true
 
             # install, no testing
             zef install --/test .
