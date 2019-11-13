@@ -71,7 +71,6 @@ matrix:
             unzip -q HPM.zip
             mv Historical-Project-Mod-0.4.5.2 HPM
             cat >hpm.whitelist <<EOF
-              news/news_fake_default.txt
         EOF
 
             # run regression test

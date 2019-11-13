@@ -169,10 +169,11 @@ grammar Grammar does ErrorReporting {
     #
     # Some characters are not valid in identifiers though they don't appear to have a syntactical meaning either:
     # - brackets: ()
-    # - symbols: !$%&
+    # - symbols: !&
     #
     # Some characters are valid in identifiers but are displayed in some special fashion:
     # - localisation command marker: $ (e.g. “$COUNTRY_ADJ$”)
+    # - string substitution within or without double quotes e.g. `text_add = { %2% }`.
     # - colouring: § (e.g. “§Bblue text§!”)
     # - game currency: ¤
     # - indent: £
@@ -191,7 +192,7 @@ grammar Grammar does ErrorReporting {
             # punctuation and separators
             + ['\-./:?_|]
             # misc. symbols
-            + [*+@^`~]
+            + [%*+@^`~]
             # alphanumerical
             + [0..9A..Za..z]
 
