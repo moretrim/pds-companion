@@ -99,14 +99,14 @@ role ErrorReporting does Grammar::ErrorReporting {
     }
 }
 
-sub line-hint(Match:D $_ --> Int:D)
-{
-    my \parsed = .target.substr(0, .pos).trim-trailing;
-    parsed.lines.elems
-}
-
 class Remarks {
     has Pair @.commment-remarks;
+
+    sub line-hint(Match:D $_ --> Int:D)
+    {
+        my \parsed = .target.substr(0, .pos).trim-trailing;
+        parsed.lines.elems
+    }
 
     method comment($/) {
         if $<comment-header> eq ';' {
