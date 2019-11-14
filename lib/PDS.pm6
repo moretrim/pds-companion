@@ -378,5 +378,5 @@ class Soup {
 #| Throws but does not fail, unlike L<PDS::Parse>.
 our sub soup(Grammar \gram, Str:D \input --> Array:D) is export
 {
-    parse(gram, input, actions => Soup).made
+    parse(gram, input, actions => Soup).made or []
 }
