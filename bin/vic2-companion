@@ -30,7 +30,7 @@ constant victoria2-grammars = (
     # PDS::Victoria2::Events,
 );
 
-constant victoria2-fallback = PDS::Grammar;
+constant victoria2-fallback = PDS::Unstructured;
 
 # MAIN parameter constraints
 

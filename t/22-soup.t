@@ -16,7 +16,7 @@ use lib 'lib';
 
 use PDS;
 
-my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
+my PDS::Grammar \test-grammar = PDS::Unstructured.new(source => $?FILE);
 
 use lib 't';
 use resources::vic2-model-country-history00;
@@ -100,7 +100,7 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, vic2-model-country-history00::resource),
+is-deeply soup(PDS::Unstructured, vic2-model-country-history00::resource),
     expectations,
     "can we parse a representative country history file";
 

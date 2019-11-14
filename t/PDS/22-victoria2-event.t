@@ -19,12 +19,34 @@ use PDS::Victoria2;
 
 my PDS::Grammar \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
 
-use lib 't/resources';
-use vic2-model-event00;
+my \pds-script = q:to«END»;
+country_event = {
+    id = 18
+    title = "EVTNAME00018"
+    desc = "EVTDESC00018"
+    major = yes
 
-is-deeply
-    soup(event-grammar, vic2-model-event00::resource),
-    soup(PDS::Unstructured, vic2-model-event00::resource),
-    "are we parsing everything that the unstructed grammar does";
+    is_triggered_only = yes
+
+    option = {
+        name = "do the thing"
+    }
+}
+END
+
+my \expectations = [
+    country_event => [
+        id => 18,
+        title => '"EVTNAME00018"',
+        desc => '"EVTDESC00018"',
+        :major,
+
+        :is_triggered_only,
+
+        option => [ name => '"do the thing"' ],
+    ]
+];
+
+is-deeply soup(event-grammar, pds-script), expectations, "can we parse a country event";
 
 done-testing;

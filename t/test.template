@@ -16,7 +16,7 @@ use lib 'lib';
 
 use PDS;
 
-my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
+my PDS::Grammar \test-grammar = PDS::Unstructured.new(source => $?FILE);
 
 my \pds-script = q:to«END»;
 END

@@ -19,14 +19,10 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 #| Tools for Victoria 2 PDS script files.
 unit module PDS::Victoria2;
 
-
-# no precompilation;
-# use Grammar::Tracer;
-
 use PDS;
 
 #| Base for common items for Victoria 2 grammars.
-our grammar Base is PDS::Grammar {
+our grammar Base is PDS::Unstructured {
     rule condition { <soup=.block> }
 }
 

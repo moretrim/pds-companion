@@ -21,6 +21,8 @@ unit module PDS;
 
 use Grammar::ErrorReporting;
 
+=head2 Error Reporting
+
 constant &fancy = do if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
     ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored')
 } else {
@@ -99,6 +101,8 @@ role ErrorReporting does Grammar::ErrorReporting {
     }
 }
 
+=head2 Remarks
+
 class Remarks {
     has Pair @.commment-remarks;
 
@@ -119,32 +123,16 @@ class Remarks {
     }
 }
 
-#| Base PDS script grammar.
-#|
-#| Able to unsmartly parse script files N<L<PDS::Grammar> has been designed & validated around Victoria 2 files only>,
-#| though the result will be an unstructured soup. Its main purpose is to be subclassed and reused in order to perform
-#| more structured parsing.
-#|
-#| Remarks made during parsing can be accessed as the C<remarks> entry of the L<Associative> payload (see
-#| L<Match::made>).
-#|
-#| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
-#| grammars.
-grammar Grammar does ErrorReporting {
-    rule TOP {
-        ^ @<entries>=<.entry>* $
-    }
+=head2 Grammar Generalities
 
-    token ok { <?> }
-
+#| Lexing scaffolding for PDS script.
+role Scaffolding {
     # N.b. handling of non NL-terminated input
-    token wb { <?after <.syntax-char>|^|$> }
-    token comment {
-        $<comment-header>=<[#;]>
-        \V*
-        [ \n\s* | $ ]
+    regex wb { <?after <.syntax-char>|^|$> }
+    regex comment {
+        :r [ $<comment-header>=<[#;]> \V* ]+ % [ \n\s* ] [ \n | $ ]
     }
-    token ws { <|wb> \s* <comment>* }
+    regex ws { :r <|wb> [ <comment> | \s+ ]* }
 
     # N.b. PDS script files use octet-oriented encodings via Windows code pages. We go along with what the most of
     # modding community is doing by sticking to Windows-1252 (aka CP-1252).
@@ -218,17 +206,45 @@ grammar Grammar does ErrorReporting {
             + [†‡™¦§©®¶]
         >
     }
+}
 
-    rule entry {
-        | <soup=.pair>
-        | <soup=.value>
-        | <soup=.color>
-    }
+#| Base PDS script grammar. Handles everything that is common to all PDS script, though not able to parse any kind of
+#| file. For that latter purpose see specific inheriting grammars or L<PDS::Unstructured>.
+#|
+#| Inheriting grammars should conform to the soup protocol if they want to play nice with L<PDS::soup>.
+grammar Grammar does Scaffolding does ErrorReporting {
+    regex ok { <?> }
 
-    ## Specific entries
+    ## PDS data types
 
-    ### Colours
+    token text { <soup=.identifier> | <soup=.quoted-identifier> }
+    # N.b. no «» boundary because some transliterated names (e.g. from Slavic languages) end in an apostrophe.
+    token identifier        { <?after <.syntax-char>|^> <.identifier-char>+ <?before <.syntax-char>|$> }
+    regex quoted-identifier { :r '"'~ '"' <-["]>* }
 
+    # don't use quantifiers for LTM to kick in
+    regex date              { :r « \d\d\d\d '.' \d\d? '.' \d\d? » }
+
+    # N.b. overlaps with identifier
+    token number            { <soup=.integer> | <soup=.decimal> }
+    regex integer           { :r '-'? \d+ » }
+    regex decimal           { :r '-'? [ \d+ ]? '.' \d+ » }
+
+    regex yes-or-no         { :r:i « [ 'yes' | 'no' ] » }
+}
+
+=begin pod
+
+=head2 Additional Parse Roles
+
+The semantic meaning of PDS script is not global but on a case-by-case basis. For instance files that describe events
+are not expected to be structured the same as files that describe decisions. However when script files do end up with
+similarities, we factor out the common parsing code into reusable roles.
+
+=end pod
+
+#| Parse an RGB color spec: C<color = { 60 120 180 }>.
+role Color {
     rule color {
         $<key>=('color') '=' '{' ~ '}' <value=.color-spec>
     }
@@ -238,15 +254,38 @@ grammar Grammar does ErrorReporting {
         | @<color-values>=(<.dec-rgb> ** 3)
     }
 
-    rule hex-rgb {
-        « [ 0 | 1 | \d**1..3 <?{ 0 <= $/.Int <= 255 }> ] »
+    regex hex-rgb {
+        :r « [ 0 | 1 | \d**1..3 <?{ 0 <= $/.Int <= 255 }> ] »
     }
 
-    rule dec-rgb {
-        « [ 0 | 1 | 0?'.'\d+ ] »
+    regex dec-rgb {
+        :r « [ 0 | 1 | 0?'.'\d+ ] »
+    }
+}
+
+=head2 Parsers
+
+#| Unstructured PDS script parser.
+#|
+#| Able to unsmartly parse script files N<L<PDS::Unstructured> has been designed & validated around Victoria 2 files
+#| only>, though the result will be an unstructured soup.
+#|
+#| Remarks made during parsing can be accessed as the C<remarks> entry of the L<Associative> payload (see
+#| L<Match::made>).
+#|
+#| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
+#| grammars.
+grammar Unstructured is Grammar {
+    rule TOP {
+        ^ @<entries>=<.entry>* $
     }
 
-    ## Generic pair
+    rule entry {
+        | <soup=.pair>
+        | <soup=.value>
+    }
+
+    ## Unstructured pair
 
     rule pair {
         <key=.simplex> '=' <value>
@@ -254,30 +293,16 @@ grammar Grammar does ErrorReporting {
 
     token value { <soup=.simplex> | <soup=.block> }
 
-    ## Simple values
-
-    # N.b. as opposed to a compound value aka a block
+    # Simple values
     token simplex { <soup=.text> | <soup=.date> | <soup=.number> | <soup=.yes-or-no> }
 
-    token text { <soup=.identifier> | <soup=.quoted-identifier> }
-    # N.b. no «» boundary because some transliterated names (e.g. from Slavic languages) end in an apostrophe.
-    token identifier        { <?after <.syntax-char>|^> <.identifier-char>+ <?before <.syntax-char>|$> }
-    token quoted-identifier { '"' ~ '"' <-["]>* }
-    # don't use quantifiers for LTM to kick in
-    token date              { « \d\d\d\d '.' \d\d? '.' \d\d? » }
-    # N.b. overlaps with identifier
-    token number            { <soup=.integer> | <soup=.decimal> }
-    token integer           { '-'? \d+ » }
-    token decimal           { '-'? [ \d+ ]? '.' \d+ » }
-    token yes-or-no         { « [ 'yes' | 'no' ] » }
-
-    ## Compound values
-
+    # Compound values
     rule block {
-        '{' ~ '}'
-        @<entries>=<.entry>*
+        '{' ~ '}' @<entries>=<.entry>*
     }
 }
+
+=head2 Parse Functions & Actions
 
 #| Parse some input against a L<PDS::Grammar>. Provides the following benefits over the stock L<Grammar::parse>:
 #|
@@ -320,37 +345,39 @@ multi parse(
     parse(gram, path.slurp(:$enc), :$actions).self
 }
 
+#| Actions to turn the L<Match> produced by a L<PDS::Grammar> into into a tree-like array of items and pairs. See
+#| L<PDS::soup>.
 class Soup {
-    # ??? Dear Perl 6, please explain ‘before’ and ‘after’ callbacks.
-    method after($/) {}
+    # ??? Dear Raku, please explain ‘before’ and ‘after’ callbacks.
+    method after($/)  {}
     method before($/) {}
 
-    method TOP($/) {
-        make(@<entries>».made)
-    }
+    ## lexing bits
 
-    method ok($/) {}
-
-    method comment($/) {}
-    method ws($/)      {}
+    method wb                  {}
+    method comment($/)         {}
+    method ws($/)              {}
 
     method syntax-char($/)     {}
     method identifier-char($/) {}
 
-    method color-spec($/) {
-        make(@<color-values>».made)
-    }
+    ## common parsing
 
-    method hex-rgb($/) { make($/.Int) }
-    method dec-rbg($/) { make($/.Rat) }
+    method ok($/)                {}
 
     method text($/)              { make(~$/) }
     method identifier($/)        {}
     method quoted-identifier($/) {}
+
     method date($/)              { make(~$/) }
+
+    method number($/)            { make($<soup>.made) }
     method integer($/)           { make($/.Int) }
     method decimal($/)           { make($/.Rat) }
-    method yes-or-no($/)         { make(~$/ eq 'yes') }
+
+    method yes-or-no($/)         { make($/.substr(0, 1).fc eq 'y'.fc) }
+
+    ## soup protocol that grammars which inherit from L<PDS::Grammar> should conform to for these actions to work
 
     method FALLBACK($name, $/) {
         given $/ {
@@ -361,16 +388,6 @@ class Soup {
             }
         }
     }
-
-    # These are not strictly speaking necessary thanks to FALLBACK, but do speed up the parsing by avoiding the generic
-    # handling machinery.
-
-    method entry($/)   { make($<soup>.made) }
-    method pair($/)    { make($<key>.made => $<value>.made) }
-    method value($/)   { make($<soup>.made) }
-    method simplex($/) { make($<soup>.made) }
-    method number($/)  { make($<soup>.made) }
-    method block($/)   { make(@<entries>».made) }
 }
 
 #| Turn PDS script into a tree-like array of items and pairs.

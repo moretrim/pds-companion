@@ -16,7 +16,7 @@ use lib 'lib';
 
 use PDS;
 
-my PDS::Grammar \test-grammar = PDS::Grammar.new(source => $?FILE);
+my PDS::Grammar \test-grammar = PDS::Unstructured.new(source => $?FILE);
 
 use lib 't';
 use resources::vic2-model-event00;
@@ -588,7 +588,7 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Grammar, vic2-model-event00::resource), expectations, "can we parse a representative event file";
+is-deeply soup(PDS::Unstructured, vic2-model-event00::resource), expectations, "can we parse a representative event file";
 
 subtest "reject malformed inputs", {
     my \script = vic2-model-event00::resource;
@@ -609,7 +609,7 @@ subtest "reject malformed inputs", {
         { soup(test-grammar, script.subst('{', '', nth => 1)) },
         X::PDS::ParseError,
         message =>
-            / "Cannot parse input: rejected by grammar PDS::Grammar" /
+            / "Cannot parse input: rejected by grammar PDS::Unstructured" /
             & / "at line 0" /,
         "malformed input was missing opening brace number 1";
 
@@ -617,7 +617,7 @@ subtest "reject malformed inputs", {
     my &reason = -> \which {
         which != 12 ??
         "no closing '}'" !!
-        "rejected by grammar PDS::Grammar"
+        "rejected by grammar PDS::Unstructured"
     }
     for 2..* Z locs -> (\which, \loc) {
         throws-like
