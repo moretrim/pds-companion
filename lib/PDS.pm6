@@ -21,6 +21,8 @@ unit module PDS;
 
 use Grammar::ErrorReporting;
 
+use remake;
+
 =head2 Error Reporting
 
 constant &fancy = do if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
@@ -275,7 +277,7 @@ role Color {
 #| Able to unsmartly parse script files N<L<PDS::Unstructured> has been designed & validated around Victoria 2 files
 #| only>, though the result will be an unstructured soup.
 #|
-#| Remarks made during parsing can be accessed as the C<remarks> entry of the L<Associative> payload (see
+#| Remarks made during parsing can be accessed as the C<REMARKS> entry of the L<Associative> payload (see
 #| L<Match::made>).
 #|
 #| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
@@ -378,35 +380,35 @@ class Soup {
 
     ## common parsing
 
-    method text($/)              { make(~$/) }
+    method text($/)              { remake($/, SOUP => ~$/) }
     method identifier($/)        {}
     method quoted-identifier($/) {}
 
-    method date($/)              { make(~$/) }
+    method date($/)              { remake($/, SOUP => ~$/) }
 
-    method number($/)            { make($<soup>.made) }
-    method integer($/)           { make($/.Int) }
-    method decimal($/)           { make($/.Rat) }
+    method number($/)            { remake($/, SOUP => $<soup>.made<SOUP>) }
+    method integer($/)           { remake($/, SOUP => $/.Int) }
+    method decimal($/)           { remake($/, SOUP => $/.Rat) }
 
-    method yes-or-no($/)         { make($/.substr(0, 1).fc eq 'y'.fc) }
+    method yes-or-no($/)         { remake($/, SOUP => $/.substr(0, 1).fc eq 'y'.fc) }
 
     method ok($/)                {}
 
-    method kw($/)                { make(~$/) }
+    method kw($/)                { remake($/, SOUP => ~$/) }
 
     ## extra parsing
 
-    method color-spec            { make(@<color-values>».made) }
+    method color-spec            { remake($/, SOUP => @<color-values>».made<SOUP>) }
 
     ## soup protocol that grammars which inherit from L<PDS::Grammar> should conform to for these actions to work
 
     sub SOUP(Match:D $_) {
-        # .made if available, rely on the soup protocol otherwise:
+        # .made<SOUP> if already computed, rely on the soup protocol otherwise to construct it:
         #
         # - .<soup> for passthrough or delegating single-item matches
         # - .<entries> for multi-item matches
         # - .<key> and .<value> for pair matches
-        .made // do {
+        .made<SOUP> // do {
             when .<soup>:exists    { SOUP(.<soup>) }
             when .<entries>:exists { .<entries>».&SOUP }
             when .<key>:exists && (.<value>:exists) {
@@ -416,7 +418,7 @@ class Soup {
     }
 
     method FALLBACK($name, $/) {
-        make(SOUP($/))
+        remake($/, SOUP => SOUP($/))
     }
 }
 
@@ -425,5 +427,5 @@ class Soup {
 #| Throws but does not fail, unlike L<PDS::Parse>.
 our sub soup(Grammar \gram, Str:D \input --> Array:D) is export
 {
-    parse(gram, input, actions => Soup).made or []
+    parse(gram, input, actions => Soup).made<SOUP> or []
 }

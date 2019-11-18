@@ -1,40 +1,32 @@
-#| Extra soft failure, for storing in data structures
-our sub soft-fail(**@args) is export
-{
-    my $failure = Failure.new(|@args);
-    $failure.handled = True;
-    $failure;
-}
-
-#| Turn a Slip into its singular or List contents.
+#| Turn a Slip into its singular or Array contents.
 our sub unslip($_) is export
 {
     when Slip {
         if .elems == 1 {
-            .[0];
+            .[0]
         } else {
-            .List;
+            .Array;
         }
     }
     default {
-        $_;
+        $_
     }
 }
 
 #| Unslip associative values.
 our sub unslip-values(%assoc) is export
 {
-    %assoc.map({ .key => unslip(.value) }).Hash;
+    %assoc.map({ .key => unslip(.value) }).Hash
 }
 
-class X::IncompatibleMerge is Exception {
+class GLOBAL::X::IncompatibleMerge is Exception {
     has $.left;
     has $.right;
     has Str @.extra-info is rw = [];
 
     method message() {
-        my Str $suffix = $.extra-info eq '' ?? "" !! " ({$.extra-info.join(", ")})";
-        "does not know how to merge '{$.left.gist}' [{$.left.^name}], '{$.right.gist}' [{$.right.^name}]$suffix";
+        my Str $suffix = $.extra-info ?? " ({$.extra-info.join(", ")})" !! "";
+        "does not know how to merge ‘{$.left.gist}’ [{$.left.^name}], ‘{$.right.gist}’ [{$.right.^name}]$suffix";
     }
 
     method append-extra-info(+@args) {
@@ -46,23 +38,23 @@ sub merge-items(\left, \right)
 {
     # left bias
     if left ~~ Slip {
-        return unslip(left);
+        return unslip(left)
     }
     if right ~~ Slip {
-        return unslip(right);
+        return unslip(right)
     }
     given left, right {
         when Associative, Associative {
-            merge-associatives(left, right);
+            merge-associatives(left, right)
         }
         when Positional, Positional {
-            List(|left, |right);
+            Array(|left, |right)
         }
         when Str, Str {
-            left ~ right;
+            left ~ right
         }
         default {
-            die X::IncompatibleMerge.new(:left(left), :right(right));;
+            die X::IncompatibleMerge.new(:left(left), :right(right))
         }
     }
 }
@@ -71,12 +63,12 @@ our proto merge-associatives(|) is export { * }
 
 multi merge-associatives()
 {
-    %{};
+    Hash.new
 }
 
 multi merge-associatives(%only)
 {
-    %only;
+    %only
 }
 
 multi merge-associatives(%left, %right)
@@ -84,23 +76,16 @@ multi merge-associatives(%left, %right)
     my %merged = %left.deepmap(-> $pair is copy { $pair<> });
     for %right.kv -> \key, \value {
         given %left{key} {
-            %merged{key} = $_.defined ?? merge-items($_, value) !! unslip(value);
-            CATCH {
-                when X::IncompatibleMerge {
-                    dd %left;
-                    dd %right;
-                    .rethrow;
-                }
-            }
+            %merged{key} = $_.defined ?? merge-items($_, value) !! unslip(value)
         }
     }
-    %merged;
+    %merged
 }
 
 #| Non-mutating hash 'assignment'.
 our sub extend-associative(%target, *%pairs) is export
 {
-    unslip-values(merge-associatives(%target, %pairs));
+    unslip-values(merge-associatives(%target, %pairs))
 }
 
 #| Transitively gather & group all values associated with each key in @keys.
