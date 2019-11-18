@@ -19,11 +19,33 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 #| Tools for Victoria 2 PDS script files.
 unit module PDS::Victoria2;
 
-use PDS;
+use PDS :ast;
 
 #| Base for common items for Victoria 2 grammars.
 our grammar Base is PDS::Unstructured {
-    rule condition { <soup=.block> }
+    rule trigger-block {
+        '{' ~ '}' [
+            | @<entries>=(<key=.kw('ai')> '=' <value=.yes-or-no>)
+            # catch-all
+            | @<entries>=(<key=.simplex> '=' [<value=.simplex>|<value=.trigger-block>])
+        ]*
+    }
+
+    rule effect-block {
+        '{' ~ '}' [
+            | @<entries>=(<key=.kw('add_country_modifier')> '=' <value=.name-duration-block>)
+            | @<entries>=(<key=.kw('add_province_modifier')> '=' <value=.name-duration-block>)
+            # catch-all
+            | @<entries>=(<key=.simplex> '=' [<value=.simplex>|<value=.effect-block>])
+        ]*
+    }
+
+    rule name-duration-block {
+        '{' ~ '}' [
+            | @<entries>=(<key=.kw('name')> '=' <value=.text>)
+            | @<entries>=(<key=.kw('duration')> '=' <value=.number>)
+        ]*
+    }
 }
 
 #| Parse an event file.
@@ -52,6 +74,7 @@ our grammar Events is Base {
             | @<entries>=<major>
 
             | @<entries>=<news>
+            | @<entries>=<news-title>
             | @<entries>=<news-desc-long>
             | @<entries>=<news-desc-medium>
             | @<entries>=<news-desc-short>
@@ -63,10 +86,13 @@ our grammar Events is Base {
             | @<entries>=<event-trigger>
             | @<entries>=<mean-time-to-happen>
 
+            | @<entries>=<immediate>
             | @<entries=options>=<.option($id)>
         ]*
         {} <validate-event-block($/)>
     }
+
+    method province-event-block() { self.country-event-block }
 
     method validate-event-block(Match:D $_) {
         my Match $match = $_;
@@ -91,23 +117,29 @@ our grammar Events is Base {
         }
 
         for <picture major
-             news news-desc-long news-desc-medium news-desc-short
+             news news-title news-desc-long news-desc-medium news-desc-short
              is-triggered-only fire-only-once allow-multiple-instances
-             event-trigger mean-time-to-happen> -> $entry {
+             event-trigger mean-time-to-happen
+             immediate> -> $entry {
             if .{$entry}.elems > 1 {
                 self.error("event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
             }
         }
 
         given (.<picture>, .<major>)».elems.sum {
-            when 0  { self.error("event $id is missing a picture") }
-            when 2  { self.error(qq:to«END».chomp) if $match<major>[0]<value> eq 'yes'; }
+            when 0  {
+                # AI-only events are allowed to not have a picture
+                unless ($match<event-trigger>[0]<value><ai>[0].&yes) {
+                    self.error("event $id is missing a picture")
+                }
+            }
+            when 2  { self.error(qq:to«END».chomp) if $match<major>[0].&yes; }
             event $id is major and has a picture (no picture is required for major events)
             END
         }
 
         my \news-descs = <news-desc-long news-desc-medium news-desc-short>;
-        if .<news>[0]<value> andthen $_ eq 'yes' {
+        if .<news>[0].&yes {
             my @missing-descs;
             news-descs
                 ==> grep({ $match{$_}[0]:!exists })
@@ -116,16 +148,16 @@ our grammar Events is Base {
             event $id is missing some news descriptions ({@missing-descs».subst('-', '_', :g).join(', ')})
             END
         } elsif news-descs.map({ $match{$_}.elems }).sum != 0 {
-            # my @extra-descs;
-            # news-descs
-            #     ==> grep({ $match{$_}[0]:exists })
-            #     ==> @extra-descs;
-            # self.error(qq:to«END».chomp) if @extra-descs;
-            # event $id set to no news, but has news descriptions ({@extra-descs».subst('-', '_', :g).join(', ')})
-            # END
+            my @extra-descs;
+            news-descs
+                ==> grep({ $match{$_}[0]:exists })
+                ==> @extra-descs;
+            self.error(qq:to«END».chomp) if @extra-descs;
+            event $id set to no news, but has news descriptions ({@extra-descs».subst('-', '_', :g).join(', ')})
+            END
         }
 
-        if .<is-triggered-only>[0]<value> andthen $_ eq 'yes' {
+        if .<is-triggered-only>[0].&yes {
             given $match<event-trigger>, $match<mean-time-to-happen> {
                 when (), *.elems { self.error(qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
@@ -147,6 +179,7 @@ our grammar Events is Base {
     rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no> }
 
     rule news                     { <key=.kw('news')>                     '=' <value=.yes-or-no> }
+    rule news-title               { <key=.kw('news_title')>               '=' <value=.text> }
     rule news-desc-long           { <key=.kw('news_desc_long')>           '=' <value=.text> }
     rule news-desc-medium         { <key=.kw('news_desc_medium')>         '=' <value=.text> }
     rule news-desc-short          { <key=.kw('news_desc_short')>          '=' <value=.text> }
@@ -155,16 +188,14 @@ our grammar Events is Base {
     rule fire-only-once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no> }
     rule allow-multiple-instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no> }
 
-    rule event-trigger            { <key=.kw('trigger')>                  '=' <value=.condition> }
+    rule event-trigger            { <key=.kw('trigger')>                  '=' <value=.trigger-block> }
     rule mean-time-to-happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block> }
 
+    rule immediate                { <key=.kw('immediate')>                '=' <value=.effect-block> }
     rule option(Int $id)          { <key=.kw('option')>                   '=' <value=.option-block($id)> }
 
     rule option-block(Int $id) {
-        '{' ~ '}' [
-            | @<entries=name>=<.option-name>
-            | @<entries=effects>=<.pair>
-        ]*
+        <soup=.effect-block>
         {} <validate-option-block($id, $/)>
     }
 

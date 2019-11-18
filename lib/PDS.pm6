@@ -307,6 +307,16 @@ grammar Unstructured is Grammar {
     }
 }
 
+=head2 AST Queries
+
+# :ast export directives due to cross-module import+alias issues
+
+our sub kw-yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq 'yes'.fc }
+our sub  kw-no(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq  'no'.fc }
+
+# for things of the style `is_triggered_only = yes`
+our sub yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast<value>.&kw-yes }
+
 =head2 Parse Functions & Actions
 
 #| Parse some input against a L<PDS::Grammar>. Provides the following benefits over the stock L<Grammar::parse>:
