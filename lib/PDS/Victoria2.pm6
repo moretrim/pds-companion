@@ -38,8 +38,8 @@ our grammar Events is Base {
         ]* $
     }
 
-    rule country-event  { $<key>=('country_event')  '=' <value=.country-event-block> }
-    rule province-event { $<key>=('province_event') '=' <value=.province-event-block> }
+    rule country-event  { <key=.kw('country_event')>  '=' <value=.country-event-block> }
+    rule province-event { <key=.kw('province_event')> '=' <value=.province-event-block> }
 
     rule country-event-block {
         :my $id = Int;
@@ -60,7 +60,7 @@ our grammar Events is Base {
             | @<entries>=<fire-only-once>
             | @<entries>=<allow-multiple-instances>
 
-            | @<entries>=<trigger>
+            | @<entries>=<event-trigger>
             | @<entries>=<mean-time-to-happen>
 
             | @<entries=options>=<.option($id)>
@@ -93,7 +93,7 @@ our grammar Events is Base {
         for <picture major
              news news-desc-long news-desc-medium news-desc-short
              is-triggered-only fire-only-once allow-multiple-instances
-             trigger mean-time-to-happen> -> $entry {
+             event-trigger mean-time-to-happen> -> $entry {
             if .{$entry}.elems > 1 {
                 self.error("event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
             }
@@ -126,7 +126,7 @@ our grammar Events is Base {
         }
 
         if .<is-triggered-only>[0]<value> andthen $_ eq 'yes' {
-            given $match<trigger>, $match<mean-time-to-happen> {
+            given $match<event-trigger>, $match<mean-time-to-happen> {
                 when (), *.elems { self.error(qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
                 END
@@ -140,25 +140,25 @@ our grammar Events is Base {
         self.ok
     }
 
-    rule id                       { $<key>=('id')                       '=' <value=.number>   }
-    rule title                    { $<key>=('title')                    '=' <value=.text>     }
-    rule desc                     { $<key>=('desc')                     '=' <value=.text>     }
-    rule picture                  { $<key>=('picture')                  '=' <value=.text>     }
-    rule major                    { $<key>=('major')                    '=' <value=.yes-or-no> }
+    rule id                       { <key=.kw('id')>                       '=' <value=.number>   }
+    rule title                    { <key=.kw('title')>                    '=' <value=.text>     }
+    rule desc                     { <key=.kw('desc')>                     '=' <value=.text>     }
+    rule picture                  { <key=.kw('picture')>                  '=' <value=.text>     }
+    rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no> }
 
-    rule news                     { $<key>=('news')                     '=' <value=.yes-or-no> }
-    rule news-desc-long           { $<key>=('news_desc_long')           '=' <value=.text> }
-    rule news-desc-medium         { $<key>=('news_desc_medium')         '=' <value=.text> }
-    rule news-desc-short          { $<key>=('news_desc_short')          '=' <value=.text> }
+    rule news                     { <key=.kw('news')>                     '=' <value=.yes-or-no> }
+    rule news-desc-long           { <key=.kw('news_desc_long')>           '=' <value=.text> }
+    rule news-desc-medium         { <key=.kw('news_desc_medium')>         '=' <value=.text> }
+    rule news-desc-short          { <key=.kw('news_desc_short')>          '=' <value=.text> }
 
-    rule is-triggered-only        { $<key>=('is_triggered_only')        '=' <value=.yes-or-no> }
-    rule fire-only-once           { $<key>=('fire_only_once')           '=' <value=.yes-or-no> }
-    rule allow-multiple-instances { $<key>=('allow_multiple_instances') '=' <value=.yes-or-no> }
+    rule is-triggered-only        { <key=.kw('is_triggered_only')>        '=' <value=.yes-or-no> }
+    rule fire-only-once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no> }
+    rule allow-multiple-instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no> }
 
-    rule trigger                  { $<key>=('trigger')                  '=' <value=.condition> }
-    rule mean-time-to-happen      { $<key>=('mean_time_to_happen')      '=' <value=.block> }
+    rule event-trigger            { <key=.kw('trigger')>                  '=' <value=.condition> }
+    rule mean-time-to-happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block> }
 
-    rule option(Int $id)          { $<key>=('option')                   '=' <value=.option-block($id)> }
+    rule option(Int $id)          { <key=.kw('option')>                   '=' <value=.option-block($id)> }
 
     rule option-block(Int $id) {
         '{' ~ '}' [
@@ -168,7 +168,7 @@ our grammar Events is Base {
         {} <validate-option-block($id, $/)>
     }
 
-    rule option-name { $<key>=('name') '=' <value=.simplex> }
+    rule option-name { <key=.kw('name')> '=' <value=.simplex> }
 
     method validate-option-block(Int $id, Match:D $_) {
         my Match $match = $_;

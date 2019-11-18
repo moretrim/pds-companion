@@ -213,9 +213,7 @@ role Scaffolding {
 #|
 #| Inheriting grammars should conform to the soup protocol if they want to play nice with L<PDS::soup>.
 grammar Grammar does Scaffolding does ErrorReporting {
-    regex ok { <?> }
-
-    ## PDS data types
+    ## PDS script data types
 
     token text { <soup=.identifier> | <soup=.quoted-identifier> }
     # N.b. no «» boundary because some transliterated names (e.g. from Slavic languages) end in an apostrophe.
@@ -231,6 +229,13 @@ grammar Grammar does Scaffolding does ErrorReporting {
     regex decimal           { :r '-'? [ \d+ ]? '.' \d+ » }
 
     regex yes-or-no         { :r:i « [ 'yes' | 'no' ] » }
+
+    ## Helpers
+
+    regex ok { <?> }
+
+    # PDS script is case-insensitive
+    regex kw(Str:D \word) { :r:i « $(word) » }
 }
 
 =begin pod
@@ -246,7 +251,7 @@ similarities, we factor out the common parsing code into reusable roles.
 #| Parse an RGB color spec: C<color = { 60 120 180 }>.
 role Color {
     rule color {
-        $<key>=('color') '=' '{' ~ '}' <value=.color-spec>
+        <key=.kw('color')> '=' '{' ~ '}' <value=.color-spec>
     }
 
     rule color-spec {
@@ -255,11 +260,11 @@ role Color {
     }
 
     regex hex-rgb {
-        :r « [ 0 | 1 | \d**1..3 <?{ 0 <= $/.Int <= 255 }> ] »
+        :r « [ 0 | 1 | \d**1..3 <?{ 0 <= $/.Int <= 255 }> ] <!before '.'> »
     }
 
     regex dec-rgb {
-        :r « [ 0 | 1 | 0?'.'\d+ ] »
+        :r « [ 0 | 1 | 0?'.'\d+ ] <!before '.'> »
     }
 }
 
@@ -363,8 +368,6 @@ class Soup {
 
     ## common parsing
 
-    method ok($/)                {}
-
     method text($/)              { make(~$/) }
     method identifier($/)        {}
     method quoted-identifier($/) {}
@@ -377,16 +380,33 @@ class Soup {
 
     method yes-or-no($/)         { make($/.substr(0, 1).fc eq 'y'.fc) }
 
+    method ok($/)                {}
+
+    method kw($/)                { make(~$/) }
+
+    ## extra parsing
+
+    method color-spec            { make(@<color-values>».made) }
+
     ## soup protocol that grammars which inherit from L<PDS::Grammar> should conform to for these actions to work
 
-    method FALLBACK($name, $/) {
-        given $/ {
-            when .<soup>:exists    { make(.<soup>.made) }
-            when .<entries>:exists { make(.<entries>».made) }
+    sub SOUP(Match:D $_) {
+        # .made if available, rely on the soup protocol otherwise:
+        #
+        # - .<soup> for passthrough or delegating single-item matches
+        # - .<entries> for multi-item matches
+        # - .<key> and .<value> for pair matches
+        .made // do {
+            when .<soup>:exists    { SOUP(.<soup>) }
+            when .<entries>:exists { .<entries>».&SOUP }
             when .<key>:exists && (.<value>:exists) {
-                make(Pair.new(.<key>.made // .<key>.Str, .<value>.made // .<value>.Str))
+                Pair.new(SOUP(.<key>), SOUP(.<value>))
             }
         }
+    }
+
+    method FALLBACK($name, $/) {
+        make(SOUP($/))
     }
 }
 
