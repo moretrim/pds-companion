@@ -5,7 +5,11 @@ use PDS;
 use PDS::Victoria2;
 
 sub path-components(IO:D \path --> List:D)
-{ path.SPEC.splitdir(path) }
+{
+    # this appears to race during multiprocessing and leads to all kinds of headaches
+    # path.SPEC.splitdir(path)
+    path.path.split(path.SPEC.dir-sep).List
+}
 
 #| Example: C<path-matches("path/to/a/b/c.txt".IO, <a b c.txt>)>
 sub path-matches(IO:D \path, Positional \components --> Bool:D)
@@ -17,12 +21,9 @@ sub path-matches(IO:D \path, Positional \components --> Bool:D)
     [&&] path-comps.reverse Zeq components.reverse
 }
 
-sub is-whitelisted(IO:D \path, Positional \whitelist --> Bool:D)
+sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
 {
-    so whitelist.any ~~ {
-        .basename eq path.basename
-        && path-matches(path, path-components(.dirname.IO))
-    }
+    so whitelist.any ~~ { path-matches(candidate, path-components($^whitelisted)) }
 }
 
 constant victoria2-grammars = (
