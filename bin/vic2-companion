@@ -56,15 +56,15 @@ unit sub MAIN(
     #| set: 30s)
     OptionalPositive :$heartbeat is copy,
 
+    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
+    #| flag is set: ‘whitelist’)
+    OptionalPath :$whitelist is copy,
+
     #| base path to game or mod files
     Path :$base is copy,
 
     #| comma-separated list of extensions for the files of interest (default: ‘txt’)
     Str :$exts = "txt",
-
-    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
-    #| flag is set: ‘whitelist’)
-    OptionalPath :$whitelist is copy,
 
     #| comma-separated list of kinds of remarks to display (default: none, possible kinds: ‘opinion’)
     Str :$remarks = "",
@@ -85,11 +85,17 @@ $heartbeat = do given $heartbeat -> $_ --> Int {
     default          { $_ andthen .Int orelse Nil }
 }
 
+$whitelist = do given $whitelist -> $_ --> Str {
+    when * eqv True  { "whitelist" }
+    when * eqv False { Nil }
+    default          { $_ andthen .Str orelse Nil }
+}
+my List:D \whitelist = do with $whitelist { .IO.lines.grep(''.none)».&{.trim.IO.cleanup} } // ();
+
 my \exts = $exts.split(",")».fc.any;
 my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
-my Bool:D \base-provided = $base.defined;
 
-my @files = gather {
+my IO:D @files = gather {
     my @pending = @requests;
     while @pending {
         with @pending.shift {
@@ -98,13 +104,6 @@ my @files = gather {
         }
     }
 }
-
-$whitelist = do given $whitelist -> $_ --> Str {
-    when * eqv True  { "whitelist" }
-    when * eqv False { Nil }
-    default          { $_ andthen .Str orelse Nil }
-}
-my List \whitelist = do with $whitelist { .IO.lines.grep(''.none)».&{.trim.IO.cleanup} } // ();
 
 my \remarks = do {
     constant Kind = PDS::Remark::Kind;
