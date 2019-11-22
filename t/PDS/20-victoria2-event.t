@@ -72,7 +72,9 @@ subtest "reject malformed events", {
             / "Cannot parse input: event is missing an ID" /
             & / "at line 17" /,
         "no event id provided to country event";
+}
 
+subtest "remark on major events with pictures", {
     # picture + major
     my \picture-major = (
         |pds-script.lines[^5],
@@ -80,13 +82,15 @@ subtest "reject malformed events", {
         |pds-script.lines[6..*],
     ).flat.join("\n");
 
-    throws-like
-        { soup(event-grammar, picture-major) },
-        X::PDS::ParseError,
-        message =>
-            / "Cannot parse input: event 18 is major and has a picture" /
-            & / "at line 18" /,
-        "picture set for major country event";
+    my \parsed = PDS::parse(event-grammar, picture-major);
+    is ?parsed, True, "can we parse a major country event with a picture";
+    is-deeply parsed.made<REMARKS>.unique, (
+        PDS::Remark.new(
+            line => 6,
+            kinds => set(PDS::Remark::Opinion),
+            message=> "event 18 is major and has a picture (no picture is required for major events)"
+        ),
+    );
 }
 
 done-testing;

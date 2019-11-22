@@ -20,6 +20,9 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 unit module PDS::Victoria2;
 
 use PDS :ast;
+use remake;
+
+constant Remark = PDS::Remark;
 
 #| Base for common items for Victoria 2 grammars.
 our grammar Base is PDS::Unstructured {
@@ -54,10 +57,12 @@ our grammar Events is Base {
     method descr { "event files" };
 
     rule TOP {
+        :my @*REMARKS;
         ^ [
             | @<entries=country-events>=<.country-event>
             | @<entries=province-events>=<.province-event>
         ]* $
+        { remake($/, REMARKS => @*REMARKS) }
     }
 
     rule country-event  { <key=.kw('country_event')>  '=' <value=.country-event-block> }
@@ -72,6 +77,8 @@ our grammar Events is Base {
             | @<entries>=<desc>
             | @<entries>=<picture>
             | @<entries>=<major>
+            | @<entries>=<election>
+            | @<entries>=<issue-group>
 
             | @<entries>=<news>
             | @<entries>=<news-title>
@@ -104,25 +111,25 @@ our grammar Events is Base {
         }
         my Int $id = .<id>[0]<value>.Int;
 
-        given .<title>.elems {
-            when 1  { #`(fine) }
-            when 0  { self.error("event $id is missing a title") }
-            default { self.error("event $id has too many titles") }
+        given .<title> {
+            when .elems == 1 { #`(fine) }
+            when .elems == 0 { .remark(Remark::Opinion, "event $id is missing a title") }
+            default          { .remark(Remark::Opinion, "event $id has too many titles") }
         }
 
-        given .<desc>.elems {
-            when 1  { #`(fine) }
-            when 0  { self.error("event $id is missing a description") }
-            default { self.error("event $id has too many descriptions") }
+        given .<desc> {
+            when .elems == 1 { #`(fine) }
+            when .elems == 0 { .remark(Remark::Opinion, "event $id is missing a description") }
+            default          { .remark(Remark::Opinion, "event $id has too many descriptions") }
         }
 
-        for <picture major
+        for <picture major election issue-group
              news news-title news-desc-long news-desc-medium news-desc-short
              is-triggered-only fire-only-once allow-multiple-instances
              event-trigger mean-time-to-happen
              immediate> -> $entry {
             if .{$entry}.elems > 1 {
-                self.error("event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
+                .{$entry}[0].remark(Remark::Opinion, "event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
             }
         }
 
@@ -130,10 +137,10 @@ our grammar Events is Base {
             when 0  {
                 # AI-only events are allowed to not have a picture
                 unless ($match<event-trigger>[0]<value><ai>[0].&yes) {
-                    self.error("event $id is missing a picture")
+                    self.remark(Remark::Opinion, "event $id is missing a picture")
                 }
             }
-            when 2  { self.error(qq:to«END».chomp) if $match<major>[0].&yes; }
+            when 2  { $match<major>[0].remark(Remark::Opinion, qq:to«END».chomp) if $match<major>[0].&yes; }
             event $id is major and has a picture (no picture is required for major events)
             END
         }
@@ -144,7 +151,7 @@ our grammar Events is Base {
             news-descs
                 ==> grep({ $match{$_}[0]:!exists })
                 ==> @missing-descs;
-            self.error(qq:to«END».chomp) if @missing-descs;
+            .<news>[0].remark(Remark::Opinion, qq:to«END».chomp) if @missing-descs;
             event $id is missing some news descriptions ({@missing-descs».subst('-', '_', :g).join(', ')})
             END
         } elsif news-descs.map({ $match{$_}.elems }).sum != 0 {
@@ -152,14 +159,14 @@ our grammar Events is Base {
             news-descs
                 ==> grep({ $match{$_}[0]:exists })
                 ==> @extra-descs;
-            self.error(qq:to«END».chomp) if @extra-descs;
+            @extra-descs[0].remark(Remark::Opinion, qq:to«END».chomp) if @extra-descs;
             event $id set to no news, but has news descriptions ({@extra-descs».subst('-', '_', :g).join(', ')})
             END
         }
 
         if .<is-triggered-only>[0].&yes {
             given $match<event-trigger>, $match<mean-time-to-happen> {
-                when (), *.elems { self.error(qq:to«END».chomp) }
+                when (), *.elems { $match<mean-time-to-happen>[0].remark(Remark::Opinion, qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
                 END
             }
@@ -177,6 +184,8 @@ our grammar Events is Base {
     rule desc                     { <key=.kw('desc')>                     '=' <value=.text>     }
     rule picture                  { <key=.kw('picture')>                  '=' <value=.text>     }
     rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no> }
+    rule election                 { <key=.kw('election')>                 '=' <value=.yes-or-no> }
+    rule issue-group              { <key=.kw('issue_group')>              '=' <value=.text> }
 
     rule news                     { <key=.kw('news')>                     '=' <value=.yes-or-no> }
     rule news-title               { <key=.kw('news_title')>               '=' <value=.text> }

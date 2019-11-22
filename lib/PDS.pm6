@@ -105,23 +105,42 @@ role ErrorReporting does Grammar::ErrorReporting {
 
 =head2 Remarks
 
-class Remarks {
-    has Pair @.commment-remarks;
+#| When something is not quite a parsing error that needs to be reported through L<ErrorReporting::error>, a grammar can
+#| instead report it as a remark. This should only happen for things that:
+#|
+#| - are noncritical, i.e. does not involve malformed script that would be rejected by the game
+#| - cannot or should not be handled in parse actions
+class Remark {
+    #| A L<Remark> can have several kinds. They are:
+    #|
+    #| - C<Opinion>: Hints to help write consistent PDS script. As suggested by the name, this reflects this author's
+    #|   opinions and may not suit everybody. This kind of remarks is mostly intended for new script, as it can be very
+    #|   noisy when run on already-existing script.
+    enum Kind «Opinion»;
 
-    sub line-hint(Match:D $_ --> Int:D)
-    {
-        my \parsed = .target.substr(0, .pos).trim-trailing;
+    has Int $.line;
+    has Set $.kinds;
+    has Str $.message;
+
+    method WHICH(--> ValueObjAt:D) {
+        ValueObjAt.new((.^name, $.line, $.kinds.WHICH, $.message).join("|")) given self
+    }
+}
+
+#| Role for easily storing remarks.
+role Remarking {
+    method line-hint(--> Int:D) {
+        my \parsed = self.target.substr(0, self.pos).trim-trailing;
         parsed.lines.elems
     }
 
-    method comment($/) {
-        if $<comment-header> eq ';' {
-            @.comment-ramkers.push(line-hint($/) => "use of non-standard comment header ‘;’")
-        }
+    multi method remark(Set:D[Remark::Kind:D] $kinds where { so $_ }, Str:D $message) {
+        @*REMARKS.push(Remark.new(line => self.line-hint, :$kinds, :$message));
+        Nil
     }
 
-    method format-remarks(--> Str:D) {
-        @.comment-remarks.unique.map(-> (:$key, :$value) { "on line $key: $value" }).join("\n")
+    multi method remark(Remark::Kind:D $kind, Str:D $message) {
+        self.remark(set($kind), $message)
     }
 }
 
@@ -133,6 +152,12 @@ role Scaffolding {
     regex wb { <?after <.syntax-char>|^|$> }
     regex comment {
         :r [ $<comment-header>=<[#;]> \V* ]+ % [ \n\s* ] [ \n | $ ]
+        { $/.catch-non-standard-comment-header }
+    }
+    method catch-non-standard-comment-header() {
+        for self<comment-header>.grep({ $_ eq ';' }) {
+            .remark(Remark::Opinion, "use of non-standard comment header ‘;’")
+        }
     }
     regex ws { :r <|wb> [ <comment> | \s+ ]* }
 
@@ -214,7 +239,7 @@ role Scaffolding {
 #| file. For that latter purpose see specific inheriting grammars or L<PDS::Unstructured>.
 #|
 #| Inheriting grammars should conform to the soup protocol if they want to play nice with L<PDS::soup>.
-grammar Grammar does Scaffolding does ErrorReporting {
+grammar Grammar does ErrorReporting does Remarking does Scaffolding {
     ## PDS script data types
 
     token text { <soup=.identifier> | <soup=.quoted-identifier> }
@@ -284,7 +309,9 @@ role Color {
 #| grammars.
 grammar Unstructured is Grammar {
     rule TOP {
+        :my @*REMARKS;
         ^ @<entries>=<.entry>* $
+        { remake($/, REMARKS => @*REMARKS) }
     }
 
     rule entry {

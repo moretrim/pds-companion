@@ -27,7 +27,7 @@ sub is-whitelisted(IO:D \path, Positional \whitelist --> Bool:D)
 
 constant victoria2-grammars = (
     # not ready yet
-    # PDS::Victoria2::Events,
+    PDS::Victoria2::Events,
 );
 
 constant victoria2-fallback = PDS::Unstructured;
@@ -45,26 +45,29 @@ unit sub MAIN(
     #| game or mod paths to analyse recursively (relative to <base> when specified, current working directory otherwise)
     **@paths,
 
-    #| base path to game or mod files
-    Path :$base is copy,
-
-    #| comma separated list of extensions for the files of interest (default: ‘txt’)
-    Str :$exts = "txt",
-
-    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
-    #| flag is set: ‘whitelist’)
-    OptionalPath :$whitelist is copy,
-
-    #| periodically emit a heartbeat message, useful during long processings (interval in seconds, default if flag is
-    #| set: 30s)
-    OptionalPositive :$heartbeat is copy,
-
     #| number of parallel jobs (default: 1.25 × number of cores, rounded)
     Positive :j(:$jobs) = round(1.25 * $*KERNEL.cpu-cores),
 
     #| when to colourise the output (default: ‘auto’), but note that colour output can only be performed if
     #| Terminal::ANSIColor is installed
     When :colour(:$color) = When::auto,
+
+    #| periodically emit a heartbeat message, useful during long processings (interval in seconds, default if flag is
+    #| set: 30s)
+    OptionalPositive :$heartbeat is copy,
+
+    #| base path to game or mod files
+    Path :$base is copy,
+
+    #| comma-separated list of extensions for the files of interest (default: ‘txt’)
+    Str :$exts = "txt",
+
+    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
+    #| flag is set: ‘whitelist’)
+    OptionalPath :$whitelist is copy,
+
+    #| comma-separated list of kinds of remarks to display (default: none, possible kinds: ‘opinion’)
+    Str :$remarks = "",
 );
 
 # process arguments
@@ -75,6 +78,12 @@ my &style-with-colours = do if (Nil !=== try require Terminal::ANSIColor)
 } else {
     sub plain(\text, $) { text }
 };
+
+$heartbeat = do given $heartbeat -> $_ --> Int {
+    when * eqv True  { 30 }
+    when * eqv False { Nil }
+    default          { $_ andthen .Int orelse Nil }
+}
 
 my \exts = $exts.split(",")».fc.any;
 my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
@@ -90,18 +99,18 @@ my @files = gather {
     }
 }
 
-$heartbeat = do given $heartbeat -> $_ --> Int {
-    when * eqv True  { 30 }
-    when * eqv False { Nil }
-    default          { $_ andthen .Int orelse Nil }
-}
-
 $whitelist = do given $whitelist -> $_ --> Str {
     when * eqv True  { "whitelist" }
     when * eqv False { Nil }
     default          { $_ andthen .Str orelse Nil }
 }
 my List \whitelist = do with $whitelist { .IO.lines.grep(''.none)».&{.trim.IO.cleanup} } // ();
+
+my \remarks = do {
+    constant Kind = PDS::Remark::Kind;
+    my \kinds = Kind.enums.keys.map({ .fc => Kind::{$_} }).Map;
+    $remarks.split(",")».&{kinds{.fc}}.grep(*.defined).Set
+};
 
 # more preliminaries
 
@@ -127,7 +136,24 @@ sub note-warning(Str:D \msg --> Bool:D)
     }
 }
 
-sub process-file(IO:D \file --> Pair:D)
+package status { enum status «success expected-failure failure unexpected-success»; }
+
+class ProcessResult {
+    has $.path;
+    has $.result;
+    has $.remarks;
+
+    method status(--> status::status:D) {
+        given is-whitelisted($.path, whitelist), $.result {
+            when !*, Failure.none { status::success }
+            when ?*, Failure      { status::expected-failure }
+            when !*, Failure      { status::failure }
+            when ?*, Failure.none { status::unexpected-success }
+        }
+    }
+}
+
+sub process-file(IO:D \file --> ProcessResult:D)
 {
     my \dir = file.SPEC.catdir(path-components(file)[^(*-1)]).IO;
     my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.list) });
@@ -141,9 +167,13 @@ sub process-file(IO:D \file --> Pair:D)
     }
     my \grammar = candidates ?? candidates[0] !! victoria2-fallback;
 
-    # condense entire match to concrete result
+    my \parsed = PDS::parse(grammar, file);
+
+    # condense entire match to concrete result in case of success
     # this avoids carrying around file contents inside (sometimes huge) ast pieces
-    (file) => (my \result = PDS::parse(grammar, file) andthen .Bool orelse result)
+    my $result = (parsed andthen .Bool orelse parsed);
+    my $remarks = (parsed andthen .made<REMARKS>.unique.list);
+    ProcessResult.new(path => file, :$result, :$remarks)
 }
 
 # get started
@@ -164,17 +194,6 @@ if @files.elems == 0 {
     $*OUT.flush;
 }
 
-package status { enum status «success expected-failure failure unexpected-success»; }
-
-sub by-status((:key($path), :value($result))) {
-    given is-whitelisted($path, whitelist), $result {
-        when !*, Failure.none { status::success }
-        when ?*, Failure      { status::expected-failure }
-        when !*, Failure      { status::failure }
-        when ?*, Failure.none { status::unexpected-success }
-    }
-}
-
 # do the work
 
 my \heartbeats = do with $heartbeat { Supply.interval($_, $_).map({ now.DateTime.local.hh-mm-ss }) };
@@ -182,13 +201,14 @@ my \processing = start
     @files
     .race(degree => $jobs, :1batch)
     .map(&process-file)
-    .classify(&by-status);
+    .classify(*.status);
 
 my \start = now;
 my \results = await supply {
     with heartbeats {
         whenever heartbeats {
-            say " ...processing ($_)..."
+            say " ...processing ($_)...";
+            $*OUT.flush
         }
     }
 
@@ -217,16 +237,39 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
         my \fancied = style-with-colours("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
 
         my \explanations = do if $explain {
-            ":\n\n" ~ do if items».value.any ~~ Failure {
-                items».&{ given .value { .exception ~ .backtrace.nice } }.join("\n").indent(4)
+            ":\n\n" ~ do if items».result.any ~~ Failure {
+                items».&{ given .result { .exception ~ .backtrace.nice.chomp } }.join("\n\n").indent(8)
             } else {
-                items».key.join("\n").indent(4)
+                items».path.join("\n").indent(8)
             }
         } else {
             "."
         }
 
-        "  • {fancied} {descr(count)}{explanations}\n"
+        my \spacing = $explain ?? "\n\n    " !! " ";
+
+        my \candidates = items.grep({ ([(+)] .remarks.map(*.kinds)) ∩ remarks }).list;
+        my \remark-report = do if candidates.map(*.remarks).flat {
+            sub format-remarks(\remarks --> Str:D) {
+                my \line-width = [max] remarks.cache».&{.line.chars};
+
+                remarks».&{
+                    "line {style-with-colours(.line.fmt("%{line-width}d"), "blue")}: {.message}"
+                }.join("\n").indent(4)
+            }
+
+            qq:to«END»;
+            {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
+
+            {candidates».&{ "in ‘{style-with-colours(.path.path, "cyan")}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
+            END
+        } else {
+            ""
+        }
+
+        qq:to«END»;
+          • {fancied} {descr(count)}{explanations}{spacing}{remark-report}
+        END
     } else {
         Nil
     }
