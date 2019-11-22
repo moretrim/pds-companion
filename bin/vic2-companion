@@ -156,7 +156,7 @@ class ProcessResult {
 sub process-file(IO:D \file --> ProcessResult:D)
 {
     my \dir = file.SPEC.catdir(path-components(file)[^(*-1)]).IO;
-    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.list) });
+    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.List) });
     if candidates.elems > 1 {
         note-warning qq:to«END».chomp
         File ‘{file.path}’ is ambiguous because its path matches the following:
@@ -172,7 +172,7 @@ sub process-file(IO:D \file --> ProcessResult:D)
     # condense entire match to concrete result in case of success
     # this avoids carrying around file contents inside (sometimes huge) ast pieces
     my $result = (parsed andthen .Bool orelse parsed);
-    my $remarks = (parsed andthen .made<REMARKS>.unique.list);
+    my $remarks = (parsed andthen .made<REMARKS>.unique).List;
     ProcessResult.new(path => file, :$result, :$remarks)
 }
 
@@ -248,7 +248,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
 
         my \spacing = $explain ?? "\n\n    " !! " ";
 
-        my \candidates = items.grep({ ([(+)] .remarks.map(*.kinds)) ∩ remarks }).list;
+        my \candidates = items.grep({ ([(+)] .remarks.map(*.kinds)) ∩ remarks }).List;
         my \remark-report = do if candidates.map(*.remarks).flat {
             sub format-remarks(\remarks --> Str:D) {
                 my \line-width = [max] remarks.cache».&{.line.chars};
