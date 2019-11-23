@@ -78,20 +78,20 @@ our grammar Events is Base {
             | @<entries>=<picture>
             | @<entries>=<major>
             | @<entries>=<election>
-            | @<entries>=<issue-group>
+            | @<entries>=<issue_group>
 
             | @<entries>=<news>
-            | @<entries>=<news-title>
-            | @<entries>=<news-desc-long>
-            | @<entries>=<news-desc-medium>
-            | @<entries>=<news-desc-short>
+            | @<entries>=<news_title>
+            | @<entries>=<news_desc_long>
+            | @<entries>=<news_desc_medium>
+            | @<entries>=<news_desc_short>
 
-            | @<entries>=<is-triggered-only>
-            | @<entries>=<fire-only-once>
-            | @<entries>=<allow-multiple-instances>
+            | @<entries>=<is_triggered_only>
+            | @<entries>=<fire_only_once>
+            | @<entries>=<allow_multiple_instances>
 
-            | @<entries>=<event-trigger>
-            | @<entries>=<mean-time-to-happen>
+            | @<entries>=<event_trigger>
+            | @<entries>=<mean_time_to_happen>
 
             | @<entries>=<immediate>
             | @<entries=options>=<.option($id)>
@@ -123,20 +123,20 @@ our grammar Events is Base {
             default          { .remark(Remark::Opinion, "event $id has too many descriptions") }
         }
 
-        for <picture major election issue-group
-             news news-title news-desc-long news-desc-medium news-desc-short
-             is-triggered-only fire-only-once allow-multiple-instances
-             event-trigger mean-time-to-happen
+        for <picture major election issue_group
+             news news_title news_desc_long news_desc_medium news_desc_short
+             is_triggered_only fire_only_once allow_multiple_instances
+             event_trigger mean_time_to_happen
              immediate> -> $entry {
             if .{$entry}.elems > 1 {
-                .{$entry}[0].remark(Remark::Opinion, "event $id has too many ‘$($entry.subst('-', '_', :g))’ entries")
+                .{$entry}[0].remark(Remark::Opinion, "event $id has too many ‘$entry’ entries")
             }
         }
 
         given (.<picture>, .<major>)».elems.sum {
             when 0  {
                 # AI-only events are allowed to not have a picture
-                unless ($match<event-trigger>[0]<value><ai>[0].&yes) {
+                unless ($match<event_trigger>[0]<value><ai>[0].&yes) {
                     self.remark(Remark::Opinion, "event $id is missing a picture")
                 }
             }
@@ -145,28 +145,28 @@ our grammar Events is Base {
             END
         }
 
-        my \news-descs = <news-desc-long news-desc-medium news-desc-short>;
+        my \news_descs = <news_desc_long news_desc_medium news_desc_short>;
         if .<news>[0].&yes {
             my @missing-descs;
-            news-descs
+            news_descs
                 ==> grep({ $match{$_}[0]:!exists })
                 ==> @missing-descs;
             .<news>[0].remark(Remark::Opinion, qq:to«END».chomp) if @missing-descs;
-            event $id is missing some news descriptions ({@missing-descs».subst('-', '_', :g).join(', ')})
+            event $id is missing some news descriptions ({@missing-descs.join(', ')})
             END
-        } elsif news-descs.map({ $match{$_}.elems }).sum != 0 {
+        } elsif news_descs.map({ $match{$_}.elems }).sum != 0 {
             my @extra-descs;
-            news-descs
+            news_descs
                 ==> grep({ $match{$_}[0]:exists })
                 ==> @extra-descs;
             @extra-descs[0].remark(Remark::Opinion, qq:to«END».chomp) if @extra-descs;
-            event $id set to no news, but has news descriptions ({@extra-descs».subst('-', '_', :g).join(', ')})
+            event $id set to no news, but has news descriptions ({@extra-descs.join(', ')})
             END
         }
 
-        if .<is-triggered-only>[0].&yes {
-            given $match<event-trigger>, $match<mean-time-to-happen> {
-                when (), *.elems { $match<mean-time-to-happen>[0].remark(Remark::Opinion, qq:to«END».chomp) }
+        if .<is_triggered_only>[0].&yes {
+            given $match<event_trigger>, $match<mean_time_to_happen> {
+                when (), *.elems { $match<mean_time_to_happen>[0].remark(Remark::Opinion, qq:to«END».chomp) }
                 event $id has a mean time to happen but no trigger
                 END
             }
@@ -185,20 +185,20 @@ our grammar Events is Base {
     rule picture                  { <key=.kw('picture')>                  '=' <value=.text>     }
     rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no> }
     rule election                 { <key=.kw('election')>                 '=' <value=.yes-or-no> }
-    rule issue-group              { <key=.kw('issue_group')>              '=' <value=.text> }
+    rule issue_group              { <key=.kw('issue_group')>              '=' <value=.text> }
 
     rule news                     { <key=.kw('news')>                     '=' <value=.yes-or-no> }
-    rule news-title               { <key=.kw('news_title')>               '=' <value=.text> }
-    rule news-desc-long           { <key=.kw('news_desc_long')>           '=' <value=.text> }
-    rule news-desc-medium         { <key=.kw('news_desc_medium')>         '=' <value=.text> }
-    rule news-desc-short          { <key=.kw('news_desc_short')>          '=' <value=.text> }
+    rule news_title               { <key=.kw('news_title')>               '=' <value=.text> }
+    rule news_desc_long           { <key=.kw('news_desc_long')>           '=' <value=.text> }
+    rule news_desc_medium         { <key=.kw('news_desc_medium')>         '=' <value=.text> }
+    rule news_desc_short          { <key=.kw('news_desc_short')>          '=' <value=.text> }
 
-    rule is-triggered-only        { <key=.kw('is_triggered_only')>        '=' <value=.yes-or-no> }
-    rule fire-only-once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no> }
-    rule allow-multiple-instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no> }
+    rule is_triggered_only        { <key=.kw('is_triggered_only')>        '=' <value=.yes-or-no> }
+    rule fire_only_once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no> }
+    rule allow_multiple_instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no> }
 
-    rule event-trigger            { <key=.kw('trigger')>                  '=' <value=.trigger-block> }
-    rule mean-time-to-happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block> }
+    rule event_trigger            { <key=.kw('trigger')>                  '=' <value=.trigger-block> }
+    rule mean_time_to_happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block> }
 
     rule immediate                { <key=.kw('immediate')>                '=' <value=.effect-block> }
     rule option(Int $id)          { <key=.kw('option')>                   '=' <value=.option-block($id)> }
