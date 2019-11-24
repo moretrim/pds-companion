@@ -342,6 +342,9 @@ grammar Unstructured is Grammar {
 
 # :ast export directives due to cross-module import+alias issues
 
+our sub pair(\ast where Any:U|Match --> Bool:D) is export(:ast)
+{ ast.defined && ast<key>.defined && ast<value>.defined }
+
 our sub kw-yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq 'yes'.fc }
 our sub  kw-no(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq  'no'.fc }
 

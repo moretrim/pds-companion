@@ -38,6 +38,8 @@ our grammar Base is PDS::Unstructured {
         '{' ~ '}' [
             | @<entries>=(<key=.kw('add_country_modifier')> '=' <value=.name-duration-block>)
             | @<entries>=(<key=.kw('add_province_modifier')> '=' <value=.name-duration-block>)
+            | @<entries>=(<key=.kw('country_event')> '=' <value=.event-effect-target>)
+            | @<entries>=(<key=.kw('province_event')> '=' <value=.event-effect-target>)
             # catch-all
             | @<entries>=(<key=.simplex> '=' [<value=.simplex>|<value=.effect-block>])
         ]*
@@ -49,6 +51,26 @@ our grammar Base is PDS::Unstructured {
             | @<entries>=(<key=.kw('duration')> '=' <value=.number>)
         ]*
     }
+
+    rule event-effect-target {
+        <soup=.number>
+        | '{' ~ '}' [
+            [
+                @<entries=id>=(<key=.kw('id')> '=' <value=.number>)
+                @<entries=days>=(<key=.kw('days')> '=' <value=.number>)
+            ] | [
+                @<entries=days>=(<key=.kw('days')> '=' <value=.number>)
+                @<entries=id>=(<key=.kw('id')> '=' <value=.number>)
+            ]
+        ]
+    }
+}
+
+our sub event-effect-id(\ast where Any:U|Match --> Int) is export(:ast)
+{
+    pair(ast)
+    && ast<key>.fc ~~ ('country_event', 'province_event').any.fc
+    && ast<value>.&{ .<soup>, .<id>[0]<value> }.grep(*.defined)[0] andthen .Int orelse Int
 }
 
 #| Parse an event file.
