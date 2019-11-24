@@ -262,7 +262,9 @@ grammar Grammar does ErrorReporting does Remarking does Scaffolding {
     regex ok { <?> }
 
     # PDS script is case-insensitive
-    regex kw(Str:D \word) { :r:i « $(word) » }
+    # ??? Dear Raku, why must my parameter be optional especially if you seemingly always call the method with an
+    # argument
+    multi regex kw(Str $word?) { :r:i « $word » }
 }
 
 =begin pod
