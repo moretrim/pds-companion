@@ -441,6 +441,9 @@ class Soup {
             when .<key>:exists && (.<value>:exists) {
                 Pair.new(SOUP(.<key>), SOUP(.<value>))
             }
+            default {
+                die "match does not honour the soup protocol"
+            }
         }
     }
 
