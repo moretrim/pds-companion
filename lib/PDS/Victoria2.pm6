@@ -113,14 +113,14 @@ our grammar Events is Base {
 
         given .<title> {
             when .elems == 1 { #`(fine) }
-            when .elems == 0 { .remark(Remark::Opinion, "event $id is missing a title") }
-            default          { .remark(Remark::Opinion, "event $id has too many titles") }
+            when .elems == 0 { $match.remark(Remark::Opinion, "event $id is missing a title") }
+            default          { .[0].remark(Remark::Opinion, "event $id has too many titles") }
         }
 
         given .<desc> {
             when .elems == 1 { #`(fine) }
-            when .elems == 0 { .remark(Remark::Opinion, "event $id is missing a description") }
-            default          { .remark(Remark::Opinion, "event $id has too many descriptions") }
+            when .elems == 0 { $match.remark(Remark::Opinion, "event $id is missing a description") }
+            default          { .[0].remark(Remark::Opinion, "event $id has too many descriptions") }
         }
 
         for <picture major election issue_group
@@ -137,7 +137,7 @@ our grammar Events is Base {
             when 0  {
                 # AI-only events are allowed to not have a picture
                 unless ($match<event_trigger>[0]<value><ai>[0].&yes) {
-                    self.remark(Remark::Opinion, "event $id is missing a picture")
+                    $match.remark(Remark::Opinion, "event $id is missing a picture")
                 }
             }
             when 2  { $match<major>[0].remark(Remark::Opinion, qq:to«END».chomp) if $match<major>[0].&yes; }
