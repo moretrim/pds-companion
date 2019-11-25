@@ -76,7 +76,8 @@ our sub event-effect-id(\ast where Any:U|Match --> Int) is export(:ast)
 {
     pair(ast)
     && ast<key>.fc ~~ ('country_event', 'province_event').any.fc
-    && ast<value>.&{ .<soup>, .<id>[0]<value> }.grep(*.defined)[0] andthen .Int orelse Int
+    && ast<value>.&{ .<soup>, .<id>[0]<value> }.grep(*.defined)[0]
+    andthen .Int orelse Int
 }
 
 #| Parse an event file.
@@ -253,4 +254,12 @@ our grammar Events is Base {
 
         self.ok
     }
+}
+
+our sub event-id(\ast where Any:U|Match --> Int) is export(:ast)
+{
+    pair(ast)
+    && ast<key>.fc ~~ ('country_event', 'province_event').any.fc
+    && ast<value><id>[0]<value>
+    andthen .Int orelse Int
 }
