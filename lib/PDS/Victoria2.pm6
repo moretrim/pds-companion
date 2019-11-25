@@ -36,14 +36,17 @@ our grammar Base is PDS::Unstructured {
 
     rule effect-block {
         '{' ~ '}' [
-            | @<entries>=(<key=.kw('add_country_modifier')> '=' <value=.name-duration-block>)
-            | @<entries>=(<key=.kw('add_province_modifier')> '=' <value=.name-duration-block>)
-            | @<entries>=(<key=.kw('country_event')> '=' <value=.event-effect-target>)
-            | @<entries>=(<key=.kw('province_event')> '=' <value=.event-effect-target>)
+            | @<entries>=<add_country_modifier>
+            | @<entries>=<add_province_modifier>
+            | @<entries>=<country-event-effect>
+            | @<entries>=<province-event-effect>
             # catch-all
             | @<entries>=(<key=.simplex> '=' [<value=.simplex>|<value=.effect-block>])
         ]*
     }
+
+    rule add_country_modifier  { <key=.kw('add_country_modifier')>  '=' <value=.name-duration-block> }
+    rule add_province_modifier { <key=.kw('add_province_modifier')> '=' <value=.name-duration-block> }
 
     rule name-duration-block {
         '{' ~ '}' [
@@ -51,6 +54,9 @@ our grammar Base is PDS::Unstructured {
             | @<entries>=(<key=.kw('duration')> '=' <value=.number>)
         ]*
     }
+
+    rule country-event-effect  { <key=.kw('country_event')>  '=' <value=.event-effect-target> }
+    rule province-event-effect { <key=.kw('province_event')> '=' <value=.event-effect-target> }
 
     rule event-effect-target {
         <soup=.number>
