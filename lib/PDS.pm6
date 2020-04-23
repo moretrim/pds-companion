@@ -329,11 +329,13 @@ grammar Unstructured is Grammar {
 our sub pair(\ast where Any:U|Match --> Bool:D) is export(:ast)
 { ast.defined && ast<key>.defined && ast<value>.defined }
 
-our sub kw-yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq 'yes'.fc }
-our sub  kw-no(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq  'no'.fc }
+# use when it’s not clear what a missing entry implies
+our sub explicit-yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq 'yes'.fc }
+our sub  explicit-no(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast.fc eq  'no'.fc }
 
-# for things of the style `is_triggered_only = yes`
-our sub yes(\ast where Any:U|Match --> Bool:D) is export(:ast) { ast.defined && ast<value>.&kw-yes }
+# use only when a missing entry implies ‘no’
+our sub yes(\ast where Any:U|Match --> Bool:D) is export(:ast) {  ast.defined && ast<value>.&explicit-yes }
+our sub  no(\ast where Any:U|Match --> Bool:D) is export(:ast) { !ast.defined || ast<value>.&explicit-no }
 
 =head2 Parse Functions & Actions
 
