@@ -22,15 +22,16 @@ throws-like
     },
     X::PDS::ParseError,
     message =>
-        / "While parsing <unspecified>" /
-        & / "Cannot parse input: boom" /
-        & / "at line 0" /,
+        / "Error while parsing <unspecified> at line 0:" /
+        & / "boom" /,
     "exception information is propagated on throw";
 
 sub rethrow-ok(\source = Str, *%decorations)
 {
     my \source-expectations = ("‘$_’" with source) // "<unspecified>";
-    my \header-expectations = / "While parsing {source-expectations}{%decorations ?? " with the following extra information:" !! '' }" /;
+    my \context-expectations =
+        / "Error while parsing {source-expectations} at line -1:" /
+        & / "{%decorations ?? "With the following extra information:" !! '' }" /;
     my \decoration-expectations = %decorations.map({ / $(.key) ' => ' $(.value) / }).all;
 
     throws-like
@@ -50,10 +51,9 @@ sub rethrow-ok(\source = Str, *%decorations)
         },
         X::PDS::ParseError,
         message =>
-            header-expectations
+            context-expectations
             & decoration-expectations
-            & / "Cannot parse input: zap" /
-            & / "at line -1" /,
+            & / "zap" /,
         "exception information & decorations are propagated on rethrow";
 }
 

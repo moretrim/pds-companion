@@ -69,8 +69,8 @@ subtest "reject malformed events", {
         { soup(event-grammar, no-id) },
         X::PDS::ParseError,
         message =>
-            / "Cannot parse input: event is missing an ID" /
-            & / "at line 17" /,
+            / "Error while parsing ‘<string>’ at line 17:" /
+            & / "event is missing an ID" /,
         "no event id provided to country event";
 }
 

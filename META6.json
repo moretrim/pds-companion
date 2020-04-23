@@ -8,7 +8,6 @@
     "version": "0.2.0-dev",
     "api": "0",
     "depends": [
-        "Grammar::ErrorReporting"
     ],
     "provides": {
         "PDS":       "lib/PDS.pm6",

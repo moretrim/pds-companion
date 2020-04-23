@@ -598,8 +598,8 @@ subtest "reject malformed inputs", {
             { soup(test-grammar, script.subst('}', '', nth => which)) },
             X::PDS::ParseError,
             message =>
-                / "Cannot parse input: no closing '}'" /
-                & / "at line " 493 /,
+                / "Error while parsing ‘<string>’ at line 494:" /
+                & / "expected closing '}'" /,
             "malformed input was missing closing brace number {which}";
     }
 
@@ -609,14 +609,14 @@ subtest "reject malformed inputs", {
         { soup(test-grammar, script.subst('{', '', nth => 1)) },
         X::PDS::ParseError,
         message =>
-            / "Cannot parse input: rejected by grammar PDS::Unstructured" /
-            & / "at line 0" /,
+            / "Error while parsing ‘<string>’ at line 0:" /
+            & / "rejected by grammar PDS::Unstructured" /,
         "malformed input was missing opening brace number 1";
 
     my \locs = 7, 10, 16, 19, 24, 34, 36, 37, 37, 37, 0, 51;
     my &reason = -> \which {
         which != 12 ??
-        "no closing '}'" !!
+        "expected closing '}'" !!
         "rejected by grammar PDS::Unstructured"
     }
     for 2..* Z locs -> (\which, \loc) {
@@ -624,8 +624,8 @@ subtest "reject malformed inputs", {
             { soup(test-grammar, script.subst('{', '', nth => which)) },
             X::PDS::ParseError,
             message =>
-                / "Cannot parse input: " $(reason(which)) /
-                & / "at line " $(loc) /,
+                / "Error while parsing ‘<string>’ at line " $(loc) ":" /
+                & / $(reason(which)) /,
             "malformed input was missing opening brace number {which}";
     }
 }

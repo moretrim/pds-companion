@@ -19,8 +19,6 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 #| Tools to help with modding Paradox Development Studio games.
 unit module PDS;
 
-use Grammar::ErrorReporting;
-
 use remake;
 
 =head2 Error Reporting
@@ -34,72 +32,58 @@ constant &fancy = do if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
 #| Base exception for all parsing errors.
 #|
 #| Thrown when a L<PDS::Grammar> reports an error.
-class GLOBAL::X::PDS::ParseError is X::Grammar::ParseError {
-    # from X::Grammar::ParseError, to make them mutable
-    has $.description      is rw;
-    has $.line             is rw;
-    has $.msg              is rw;
-    has $.error-position   is rw;
-    has $.context-string   is rw;
-    has $.goal             is rw;
-
-    has Str  $.source      is rw;
-    has Pair @.decorations is rw;
+class GLOBAL::X::PDS::ParseError is Exception {
+    has Str $.source  is rw;
+    has %.decorations is rw;
+    has Str $.target  is rw;
+    has Int $.pos     is rw;
+    has Int $.line    is rw;
+    has Str $.msg     is rw;
+    has Str $.context is rw;
 
     method message(--> Str:D) {
-        my \report = callsame;
         my \source = ($.source andthen "‘{fancy($_, "cyan")}’" orelse fancy("<unspecified>", "red"));
-        my \decoration-header = @.decorations ?? ' with the following extra information:' !! '';
+        my \line = fancy($.line, "cyan");
+        my \decoration-header = %.decorations ?? 'With the following extra information:' !! '';
         qq:to«END».chomp;
-        While parsing {source}{decoration-header}{ @.decorations.map({ "\n    {.key} => {.value}" }) }
-        {report.trim}
+        Error while parsing {source} at line {line}:
+        $.context.indent(4)
+        $.msg
+        {decoration-header}{ %.decorations.map({ "\n    {.key} => {.value.gist}" }) }
         END
     }
 }
 
+#| Count of context lines for the purposes of error messages.
+constant error-context-lines = %(:4before, :2after);
+
 #| Role for easily reporting parsing errors.
-role ErrorReporting does Grammar::ErrorReporting {
+role ErrorReporting {
     #| Throw an L<X::PDS::ParseError>.
     method error(
         ::?CLASS:D:
-        $msg,          #= reason for failure to parse
-        :$goal,        #= (unused)
-        **@decorations #= additional information
+        $msg,         #= reason for failure to parse
+        *%decorations #= additional information
     ) {
-        # ideally
-        # try nextwith($msg, :$goal);
+        my \accepted = self.target.substr(0, self.pos);
+        my $line = accepted.lines.elems;
+        my \before = accepted.lines[* - error-context-lines<before> .. *];
+        my \after = self.target.substr(accepted.chars).lines[0 .. error-context-lines<after>]:v;
+        my \cursor = fancy("‸", "orange");
+        my $context = before.join("\n") ~ cursor ~ after.join("\n");
 
-        # meta-hack, requires disabling precompilation
-        # try Grammar::ErrorReporting.^lookup('error')(self, $msg, :$goal);
-
-        # instead, we clone and imbue with the base role
-        try (Match.new(
-            :$.hash,
-            :$.list,
-            :$.from,
-            :$.orig,
+        X::PDS::ParseError.new(
+            :$.target,
             :$.pos,
-            :$.made,
-        ) but Grammar::ErrorReporting).error($msg, :$goal);
+            :$line,
+            :$msg,
+            :$context,
+            :%decorations,
+        ).throw
+    }
 
-        given $! {
-            when X::Grammar::ParseError {
-                X::PDS::ParseError.new(
-                    description => .description,
-                    line => .line,
-                    msg => .msg,
-                    target => .target,
-                    error-position => .error-position,
-                    context-string => .context-string,
-                    goal => .goal,
-                    :@decorations,
-                ).throw
-            }
-
-            default {
-                .throw
-            }
-        }
+    method FAILGOAL($goal) {
+        self.error("expected closing $goal.trim()");
     }
 }
 
