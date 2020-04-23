@@ -426,17 +426,19 @@ class Soup {
     sub SOUP(Match:D $_) {
         # .made<SOUP> if already computed, rely on the soup protocol otherwise to construct it:
         #
+        # - .<item> for single-item string matches
         # - .<soup> for passthrough or delegating single-item matches
         # - .<entries> for multi-item matches
         # - .<key> and .<value> for pair matches
         .made<SOUP> // do {
+            when .<item>:exists    { .<item>.Str }
             when .<soup>:exists    { SOUP(.<soup>) }
             when .<entries>:exists { .<entries>».&SOUP }
             when .<key>:exists && (.<value>:exists) {
                 Pair.new(SOUP(.<key>), SOUP(.<value>))
             }
             default {
-                die "match does not honour the soup protocol"
+                die "match does not honour the soup protocol:\n{.gist.indent(4)}"
             }
         }
     }
