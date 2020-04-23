@@ -253,9 +253,11 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
             sub format-remarks(\remarks --> Str:D) {
                 my \line-width = [max] remarks.cache».&{.line.chars};
 
-                remarks».&{
-                    "line {style-with-colours(.line.fmt("%{line-width}d"), "blue")}: {.message}"
-                }.join("\n").indent(4)
+                remarks.map({
+                    my \plain-prefix = "line {.line.fmt("%{line-width}d")}: ";
+                    my \line-prefix = "line {style-with-colours(.line.fmt("%{line-width}d"), "blue")}: ";
+                    line-prefix ~ .message.indent(plain-prefix.chars).trim-leading
+                }).join("\n").indent(4)
             }
 
             qq:to«END»;
