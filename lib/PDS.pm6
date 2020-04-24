@@ -338,7 +338,7 @@ our sub yes(\ast where Any:U|Match --> Bool:D) is export(:ast) {  ast.defined &&
 our sub  no(\ast where Any:U|Match --> Bool:D) is export(:ast) { !ast.defined || ast<value>.&explicit-no }
 
 our sub kw(\ast where Any:U|Match --> Str:D) is export(:ast)
-{ ast<value> andthen .fc orelse "" }
+{ ast andthen .fc orelse "" }
 
 =head2 Parse Functions & Actions
 
