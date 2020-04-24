@@ -1,10 +1,12 @@
 License Terms
 =============
 
+“2019–2020” and other similar notices indicate that all individual years in the range, inclusive, are covered.
+
 pds-companion library
 ---------------------
 
-Copyright © 2019 moretrim.
+Copyright © 2019–2020 moretrim.
 
 pds-companion is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3 as
@@ -26,7 +28,7 @@ pds-companion test suite
 
 ### Test suite files
 
-Copyright © 2019 moretrim.
+Copyright © 2019–2020 moretrim.
 
 [![cc0-icon]][cc0-license] To the extent possible under law, the author has waived all copyright and related or
 neighboring rights to the pds-companion test suite files (e.g. `t/20-soup.t`). This does not include test suite

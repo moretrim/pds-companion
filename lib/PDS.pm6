@@ -1,5 +1,5 @@
 =begin COPYRIGHT
-Copyright © 2019 moretrim.
+Copyright © 2019–2020 moretrim.
 
 This file is part of pds-companion.
 
