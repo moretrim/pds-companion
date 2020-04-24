@@ -266,7 +266,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
             qq:to«END»;
             {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
 
-            {candidates».&{ "in ‘{$styles.style(.path.path, "cyan")}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
+            {candidates».&{ "in ‘{$styles.quote-path(.path.path)}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
             END
         } else {
             ""

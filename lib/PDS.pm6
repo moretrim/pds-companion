@@ -37,7 +37,7 @@ class GLOBAL::X::PDS::ParseError does Styles::Stylish is Exception {
     has Str $.context is rw;
 
     method message(--> Str:D) {
-        my \source = do $.source andthen "‘{$.styles.attention($_)}’" orelse $.styles.attention("<unspecified>");
+        my \source = do $.source andthen $.styles.quote-path($_) orelse $.styles.attention("<unspecified>");
         my \line   = $.styles.attention(~$.line);
         my \decoration-header = %.decorations ?? 'With the following extra information:' !! '';
         qq:to«END».chomp;
@@ -137,7 +137,9 @@ role Scaffolding {
     }
     method catch-non-standard-comment-header() {
         for self<comment-header>.grep({ $_ eq ';' }) {
-            .remark(Remark::Opinion, "use of non-standard comment header ‘{$*STYLES.code(";")}’")
+            .remark(Remark::Opinion, qq:to«END».chomp)
+            Use of non-standard comment header {$*STYLES.code-quote(";")}, prefer {$*STYLES.code-quote("#")}.
+            END
         }
     }
     regex ws { :r <|wb> [ <comment> | \s+ ]* }
