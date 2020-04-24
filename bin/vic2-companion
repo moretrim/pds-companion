@@ -256,7 +256,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
                 remarks.map({
                     my \plain-prefix = "line {.line.fmt("%{line-width}d")}: ";
                     my \line-prefix = "line {style-with-colours(.line.fmt("%{line-width}d"), "blue")}: ";
-                    line-prefix ~ .message.indent(plain-prefix.chars).trim-leading
+                    line-prefix ~ .message.indent(plain-prefix.chars).trim-leading.chomp
                 }).join("\n").indent(4)
             }
 
