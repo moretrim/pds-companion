@@ -10,9 +10,10 @@
     "depends": [
     ],
     "provides": {
-        "PDS":       "lib/PDS.pm6",
-        "remake":    "lib/remake.pm6",
-        "unsorted":  "lib/unsorted.pm6",
+        "PDS::unsorted":  "lib/PDS/unsorted.pm6",
+        "PDS::remake":    "lib/PDS/remake.pm6",
+        "PDS::Styles":    "lib/PDS/Styles.pm6",
+        "PDS":            "lib/PDS.pm6",
         "PDS::Victoria2": "lib/PDS/Victoria2.pm6"
     },
     "test-depends": [

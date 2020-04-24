@@ -15,10 +15,13 @@ use Test;
 use lib 'lib';
 
 use PDS;
+use PDS::Styles;
+
+my Styles:D $styles = Styles.new(Styles::never);
 
 throws-like
     {
-        PDS::Grammar.new.error("boom")
+        PDS::Grammar.new.error("boom", :$styles)
     },
     X::PDS::ParseError,
     message =>
@@ -47,7 +50,7 @@ sub rethrow-ok(\source = Str, *%decorations)
                     .rethrow
                 }
             }
-            PDS::Grammar.new.error("boom")
+            PDS::Grammar.new.error("boom", :$styles)
         },
         X::PDS::ParseError,
         message =>

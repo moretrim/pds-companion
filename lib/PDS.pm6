@@ -19,20 +19,15 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 #| Tools to help with modding Paradox Development Studio games.
 unit module PDS;
 
-use remake;
+use PDS::remake;
+use PDS::Styles;
 
 =head2 Error Reporting
-
-constant &fancy = do if $*OUT.t && (Nil !=== try require Terminal::ANSIColor) {
-    ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored')
-} else {
-    sub plain(\text, $) { text }
-};
 
 #| Base exception for all parsing errors.
 #|
 #| Thrown when a L<PDS::Grammar> reports an error.
-class GLOBAL::X::PDS::ParseError is Exception {
+class GLOBAL::X::PDS::ParseError does Styles::Stylish is Exception {
     has Str $.source  is rw;
     has %.decorations is rw;
     has Str $.target  is rw;
@@ -42,8 +37,8 @@ class GLOBAL::X::PDS::ParseError is Exception {
     has Str $.context is rw;
 
     method message(--> Str:D) {
-        my \source = ($.source andthen "‘{fancy($_, "cyan")}’" orelse fancy("<unspecified>", "red"));
-        my \line = fancy($.line, "cyan");
+        my \source = do $.source andthen "‘{$.styles.attention($_)}’" orelse $.styles.attention("<unspecified>");
+        my \line   = $.styles.attention(~$.line);
         my \decoration-header = %.decorations ?? 'With the following extra information:' !! '';
         qq:to«END».chomp;
         Error while parsing {source} at line {line}:
@@ -62,17 +57,19 @@ role ErrorReporting {
     #| Throw an L<X::PDS::ParseError>.
     method error(
         ::?CLASS:D:
-        $msg,         #= reason for failure to parse
-        *%decorations #= additional information
+        $msg,                #= reason for failure to parse
+        :$styles = $*STYLES, #= style override, useful when not called from a parse e.g. during testing
+        *%decorations,       #= additional information
     ) {
         my \accepted = self.target.substr(0, self.pos);
         my $line = accepted.lines.elems;
         my \before = accepted.lines[* - error-context-lines<before> .. *];
         my \after = self.target.substr(accepted.chars).lines[0 .. error-context-lines<after>]:v;
-        my \cursor = fancy("‸", "orange");
+        my \cursor = $styles.important("‸");
         my $context = before.join("\n") ~ cursor ~ after.join("\n");
 
         X::PDS::ParseError.new(
+            :$styles,
             :$.target,
             :$.pos,
             :$line,
@@ -140,7 +137,7 @@ role Scaffolding {
     }
     method catch-non-standard-comment-header() {
         for self<comment-header>.grep({ $_ eq ';' }) {
-            .remark(Remark::Opinion, "use of non-standard comment header ‘;’")
+            .remark(Remark::Opinion, "use of non-standard comment header ‘{$*STYLES.code(";")}’")
         }
     }
     regex ws { :r <|wb> [ <comment> | \s+ ]* }
@@ -294,7 +291,8 @@ role Color {
 #| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
 #| grammars.
 grammar Unstructured is Grammar {
-    rule TOP {
+    rule TOP(:$styles) {
+        :my $*STYLES = $styles;
         :my @*REMARKS;
         ^ @<entries>=<.entry>* $
         { remake($/, REMARKS => @*REMARKS) }
@@ -347,11 +345,11 @@ our sub kw(\ast where Any:U|Match --> Str:D) is export(:ast)
 #| * fails with L<PDS::ParseError> (with appropriate information filled-in) if parsing was not succesful, or returns a
 #|   L<Match>
 #| * throws in case of a different error
-our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu --> Match:D)
+our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu, Styles:D :$styles = Styles.new --> Match:D)
 { * }
 
 #| Parse from a L<Str>.
-multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu --> Match:D)
+multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu, Styles:D :$styles = Styles.new --> Match:D)
 {
     CATCH {
         when X::PDS::ParseError {
@@ -361,8 +359,9 @@ multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu --> Match:D
         default { .rethrow }
     }
     $gram = $gram // $gram.new;
-    $gram.parse(input, :$actions)
-        // $gram.error("rejected by grammar {$gram.^name}.")
+    my $args = \(:$styles);
+    $gram.parse(input, :$actions, :$args)
+        // $gram.error("rejected by grammar {$gram.^name}.", :$styles)
 }
 
 #| Parse from a file.
@@ -370,7 +369,8 @@ multi parse(
     Grammar \gram,
     IO:D() \path,                 #= path to file
     Str:D :$enc = "windows-1252", #= file encoding
-    Mu :$actions = Mu
+    Mu :$actions = Mu,
+    Styles:D :$styles = Styles.new,
     --> Match:D
 ) {
     CATCH {
@@ -380,7 +380,7 @@ multi parse(
         }
         default { .rethrow }
     }
-    parse(gram, path.slurp(:$enc), :$actions).self
+    parse(gram, path.slurp(:$enc), :$actions, :$styles).self
 }
 
 #| Actions to turn the L<Match> produced by a L<PDS::Grammar> into into a tree-like array of items and pairs. See
@@ -451,7 +451,7 @@ class Soup {
 #| Turn PDS script into a tree-like array of items and pairs.
 #|
 #| Throws but does not fail, unlike L<PDS::Parse>.
-our sub soup(Grammar \gram, Str:D \input --> Array:D) is export
+our sub soup(Grammar \gram, Str:D \input, Styles:D :$styles = Styles.new --> Array:D) is export
 {
-    parse(gram, input, actions => Soup).made<SOUP> or []
+    parse(gram, input, actions => Soup, :$styles).made<SOUP> or []
 }

@@ -15,8 +15,10 @@ use Test;
 use lib 'lib';
 
 use PDS;
+use PDS::Styles;
 use PDS::Victoria2;
 
+my Styles:D $styles = Styles.new(Styles::never);
 my PDS::Grammar \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
 
 my \pds-script = q:to«END»;
@@ -59,14 +61,17 @@ my \expectations = [
     ]
 ];
 
-is-deeply soup(event-grammar, pds-script), expectations, "can we parse a country event";
+is-deeply
+    soup(event-grammar, pds-script, :$styles),
+    expectations,
+    "can we parse a country event";
 
 subtest "reject malformed events", {
     # skip id on line 1
     my \no-id = pds-script.lines[0..^1, 1^..*].flat.join("\n");
 
     throws-like
-        { soup(event-grammar, no-id) },
+        { soup(event-grammar, no-id, :$styles) },
         X::PDS::ParseError,
         message =>
             / "Error while parsing ‘<string>’ at line 17:" /
@@ -82,7 +87,7 @@ subtest "remark on major events with pictures", {
         |pds-script.lines[6..*],
     ).flat.join("\n");
 
-    my \parsed = PDS::parse(event-grammar, picture-major);
+    my \parsed = PDS::parse(event-grammar, picture-major, :$styles);
     is ?parsed, True, "can we parse a major country event with a picture";
     is-deeply parsed.made<REMARKS>.unique, (
         PDS::Remark.new(

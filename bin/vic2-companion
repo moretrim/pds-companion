@@ -2,36 +2,8 @@
 
 use lib 'lib';
 use PDS;
+use PDS::Styles;
 use PDS::Victoria2;
-
-sub path-components(IO:D \path --> List:D)
-{
-    # this appears to race during multiprocessing and leads to all kinds of headaches
-    # path.SPEC.splitdir(path)
-    path.path.split(path.SPEC.dir-sep).List
-}
-
-#| Example: C<path-matches("path/to/a/b/c.txt".IO, <a b c.txt>)>
-sub path-matches(IO:D \path, Positional \components --> Bool:D)
-{
-    my \path-comps = path-components(path);
-
-    components.elems <= path-comps.elems &&
-    # from most to least specific component part
-    [&&] path-comps.reverse Zeq components.reverse
-}
-
-sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
-{
-    so whitelist.any ~~ { path-matches(candidate, path-components($^whitelisted)) }
-}
-
-constant victoria2-grammars = (
-    # not ready yet
-    PDS::Victoria2::Events,
-);
-
-constant victoria2-fallback = PDS::Unstructured;
 
 # MAIN parameter constraints
 
@@ -39,7 +11,14 @@ subset Path             of Str;
 subset Positive         of Int where 0 < *;
 subset OptionalPositive of Int where Any:U|Positive|Bool;
 subset OptionalPath     of Any where Any:U|Str|Bool;
+# ??? Dear Raku, why can’t my MAIN understand a cross-module enum.
 enum   When              « never always auto »;
+
+sub when-to-when(When:D $_ --> Styles::When:D) {
+    when never  { Styles::never }
+    when always { Styles::always }
+    when auto   { Styles::auto }
+}
 
 #| Perform static analysis of Victoria 2 game files.
 unit sub MAIN(
@@ -73,12 +52,7 @@ unit sub MAIN(
 
 # process arguments
 
-my &style-with-colours = do if (Nil !=== try require Terminal::ANSIColor)
-                               && ($color eqv When::always || ($color eqv When::auto && $*OUT.t)) {
-    ::("Terminal::ANSIColor::EXPORT::DEFAULT::&colored")
-} else {
-    sub plain(\text, $) { text }
-};
+my Styles:D $styles = Styles.new(when-to-when($color));
 
 $heartbeat = do given $heartbeat -> $_ --> Int {
     when * eqv True  { 30 }
@@ -112,7 +86,36 @@ my \remarks = do {
     $remarks.split(",")».&{kinds{.fc}}.grep(*.defined).Set
 };
 
-# more preliminaries
+# preliminaries
+
+sub path-components(IO:D \path --> List:D)
+{
+    # this appears to race during multiprocessing and leads to all kinds of headaches
+    # path.SPEC.splitdir(path)
+    path.path.split(path.SPEC.dir-sep).List
+}
+
+#| Example: C<path-matches("path/to/a/b/c.txt".IO, <a b c.txt>)>
+sub path-matches(IO:D \path, Positional \components --> Bool:D)
+{
+    my \path-comps = path-components(path);
+
+    components.elems <= path-comps.elems &&
+    # from most to least specific component part
+    [&&] path-comps.reverse Zeq components.reverse
+}
+
+sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
+{
+    so whitelist.any ~~ { path-matches(candidate, path-components($^whitelisted)) }
+}
+
+constant victoria2-grammars = (
+    # not ready yet
+    PDS::Victoria2::Events,
+);
+
+constant victoria2-fallback = PDS::Unstructured;
 
 sub note-warning(Str:D \msg --> Bool:D)
 {
@@ -121,13 +124,13 @@ sub note-warning(Str:D \msg --> Bool:D)
     my \lines = msg.split("\n");
 
     if lines.elems <= 1 {
-        my \styled-header       = style-with-colours("‣ {header}", styles);
+        my \styled-header       = $styles.style("‣ {header}", styles);
 
         note "{styled-header} {lines[0]}"
     } else {
-        my \styled-header       = style-with-colours("┌ {header}", styles);
-        my \styled-continuation = style-with-colours("│ ", styles);
-        my \styled-closer       = style-with-colours("└ ", styles);
+        my \styled-header       = $styles.style("┌ {header}", styles);
+        my \styled-continuation = $styles.style("│ ", styles);
+        my \styled-closer       = $styles.style("└ ", styles);
 
         note qq:to«END».chomp
         {styled-header} {lines[0]}{lines[1..^(*-1)].map("\n" ~ styled-continuation ~ *).join}
@@ -167,7 +170,7 @@ sub process-file(IO:D \file --> ProcessResult:D)
     }
     my \grammar = candidates ?? candidates[0] !! victoria2-fallback;
 
-    my \parsed = PDS::parse(grammar, file);
+    my \parsed = PDS::parse(grammar, file, :$styles);
 
     # condense entire match to concrete result in case of success
     # this avoids carrying around file contents inside (sometimes huge) ast pieces
@@ -234,7 +237,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
 {
     if items {
         my \count = items.elems;
-        my \fancied = style-with-colours("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
+        my \fancied = $styles.style("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
 
         my \explanations = do if $explain {
             ":\n\n" ~ do if items».result.any ~~ Failure {
@@ -255,7 +258,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
 
                 remarks.map({
                     my \plain-prefix = "line {.line.fmt("%{line-width}d")}: ";
-                    my \line-prefix = "line {style-with-colours(.line.fmt("%{line-width}d"), "blue")}: ";
+                    my \line-prefix = "line {$styles.style(.line.fmt("%{line-width}d"), "blue")}: ";
                     line-prefix ~ .message.indent(plain-prefix.chars).trim-leading.chomp
                 }).join("\n").indent(4)
             }
@@ -263,7 +266,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain)
             qq:to«END»;
             {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
 
-            {candidates».&{ "in ‘{style-with-colours(.path.path, "cyan")}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
+            {candidates».&{ "in ‘{$styles.style(.path.path, "cyan")}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
             END
         } else {
             ""

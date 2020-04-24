@@ -15,8 +15,10 @@ use Test;
 use lib 'lib';
 
 use PDS;
+use PDS::Styles;
 
-my PDS::Grammar \test-grammar = PDS::Unstructured.new(source => $?FILE);
+my Styles:D $styles = Styles.new(Styles::never);
+my PDS::Grammar:D \test-grammar = PDS::Unstructured.new(source => $?FILE);
 
 use lib 't';
 use resources::vic2-model-event00;
@@ -588,14 +590,17 @@ my \expectations = [
     ],
 ];
 
-is-deeply soup(PDS::Unstructured, vic2-model-event00::resource), expectations, "can we parse a representative event file";
+is-deeply
+    soup(PDS::Unstructured, vic2-model-event00::resource, :$styles),
+    expectations,
+    "can we parse a representative event file";
 
 subtest "reject malformed inputs", {
     my \script = vic2-model-event00::resource;
 
     for 1..18 -> \which {
         throws-like
-            { soup(test-grammar, script.subst('}', '', nth => which)) },
+            { soup(test-grammar, script.subst('}', '', nth => which), :$styles) },
             X::PDS::ParseError,
             message =>
                 / "Error while parsing ‘<string>’ at line 494:" /
@@ -606,7 +611,7 @@ subtest "reject malformed inputs", {
     my \openers = script.comb('{').elems;
 
     throws-like
-        { soup(test-grammar, script.subst('{', '', nth => 1)) },
+        { soup(test-grammar, script.subst('{', '', nth => 1), :$styles) },
         X::PDS::ParseError,
         message =>
             / "Error while parsing ‘<string>’ at line 0:" /
@@ -621,7 +626,7 @@ subtest "reject malformed inputs", {
     }
     for 2..* Z locs -> (\which, \loc) {
         throws-like
-            { soup(test-grammar, script.subst('{', '', nth => which)) },
+            { soup(test-grammar, script.subst('{', '', nth => which), :$styles) },
             X::PDS::ParseError,
             message =>
                 / "Error while parsing ‘<string>’ at line " $(loc) ":" /

@@ -15,16 +15,18 @@ use Test;
 use lib 'lib';
 
 use PDS;
+use PDS::Styles;
 use PDS::Victoria2;
 
-my PDS::Grammar \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
+my Styles:D $styles = Styles.new(Styles::never);
+my PDS::Grammar:D \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
 
 use lib 't/resources';
 use vic2-model-event00;
 
 is-deeply
-    soup(event-grammar, vic2-model-event00::resource),
-    soup(PDS::Unstructured, vic2-model-event00::resource),
+    soup(event-grammar, vic2-model-event00::resource, :$styles),
+    soup(PDS::Unstructured, vic2-model-event00::resource, :$styles),
     "are we parsing everything that the unstructed grammar does";
 
 done-testing;

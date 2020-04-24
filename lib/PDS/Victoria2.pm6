@@ -19,8 +19,9 @@ along with pds-companion.  If not, see <https://www.gnu.org/licenses/gpl-3.0.htm
 #| Tools for Victoria 2 PDS script files.
 unit module PDS::Victoria2;
 
+use PDS::remake;
 use PDS :ast;
-use remake;
+use PDS::Styles;
 
 constant Remark = PDS::Remark;
 
@@ -85,7 +86,8 @@ our grammar Events is Base {
     method where { <events> };
     method descr { "event files" };
 
-    rule TOP {
+    rule TOP(Styles:D :$styles) {
+        :my $*STYLES = $styles;
         :my @*REMARKS;
         ^ [
             | @<entries=country-events>=<.country-event>
