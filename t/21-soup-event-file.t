@@ -17,11 +17,12 @@ use lib 'lib';
 use PDS;
 use PDS::Styles;
 
-my Styles:D $styles = Styles.new(Styles::never);
-my PDS::Grammar:D \test-grammar = PDS::Unstructured.new(source => $?FILE);
+my Styles:D     $styles       = Styles.new(Styles::never);
+my Str:D        $source       = $?FILE;
+my PDS::Grammar \test-grammar = PDS::Unstructured;
 
-use lib 't';
-use resources::vic2-model-event00;
+use lib 't/resources';
+use vic2-model-event00;
 
 my \expectations = [
     country_event => [
@@ -590,49 +591,10 @@ my \expectations = [
     ],
 ];
 
-is-deeply
-    soup(PDS::Unstructured, vic2-model-event00::resource, :$styles),
+is-deeply(
+    PDS::soup(PDS::Unstructured, vic2-model-event00::resource, :$styles, :$source),
     expectations,
-    "can we parse a representative event file";
-
-subtest "reject malformed inputs", {
-    my \script = vic2-model-event00::resource;
-
-    for 1..18 -> \which {
-        throws-like
-            { soup(test-grammar, script.subst('}', '', nth => which), :$styles) },
-            X::PDS::ParseError,
-            message =>
-                / "Error while parsing ‘<string>’ at line 494:" /
-                & / "expected closing '}'" /,
-            "malformed input was missing closing brace number {which}";
-    }
-
-    my \openers = script.comb('{').elems;
-
-    throws-like
-        { soup(test-grammar, script.subst('{', '', nth => 1), :$styles) },
-        X::PDS::ParseError,
-        message =>
-            / "Error while parsing ‘<string>’ at line 0:" /
-            & / "rejected by grammar PDS::Unstructured" /,
-        "malformed input was missing opening brace number 1";
-
-    my \locs = 7, 10, 16, 19, 24, 34, 36, 37, 37, 37, 0, 51;
-    my &reason = -> \which {
-        which != 12 ??
-        "expected closing '}'" !!
-        "rejected by grammar PDS::Unstructured"
-    }
-    for 2..* Z locs -> (\which, \loc) {
-        throws-like
-            { soup(test-grammar, script.subst('{', '', nth => which), :$styles) },
-            X::PDS::ParseError,
-            message =>
-                / "Error while parsing ‘<string>’ at line " $(loc) ":" /
-                & / $(reason(which)) /,
-            "malformed input was missing opening brace number {which}";
-    }
-}
+    "can we parse a representative event file",
+);
 
 done-testing;

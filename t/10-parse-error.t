@@ -17,47 +17,42 @@ use lib 'lib';
 use PDS;
 use PDS::Styles;
 
-my Styles:D $styles = Styles.new(Styles::never);
+my Styles:D     $styles       = Styles.new(Styles::never);
+my Str:D        $source       = $?FILE;
 
-throws-like
+# fatal-error unit tests use C<.new> to circumvent language rules
+# in actual practice, L<fatal-error> is called on concrete L<Match> results
+
+throws-like(
     {
-        PDS::Grammar.new.error("boom", :$styles)
+        PDS::Grammar.new.fatal-error("boom", :$styles, :$source)
     },
     X::PDS::ParseError,
-    message =>
-        / "Error while parsing <unspecified> at line 0:" /
-        & / "boom" /,
-    "exception information is propagated on throw";
+    message => / "At the start of the script" / & / "boom" /,
+    "exception information is propagated on throw",
+);
 
-sub rethrow-ok(\source = Str, *%decorations)
+sub rethrow-ok(\source = Str, *%annotations)
 {
-    my \source-expectations = ("‘$_’" with source) // "<unspecified>";
-    my \context-expectations =
-        / "Error while parsing {source-expectations} at line -1:" /
-        & / "{%decorations ?? "With the following extra information:" !! '' }" /;
-    my \decoration-expectations = %decorations.map({ / $(.key) ' => ' $(.value) / }).all;
-
-    throws-like
+    throws-like(
         {
             CATCH {
                 when X::PDS::ParseError {
                     .source = source;
-                    .msg = "zap";
-                    .line = -1;
-                    for %decorations -> \deco {
-                        .decorations.push(deco);
+                    for %annotations -> \annotation {
+                        .report.annotations.push(annotation);
                     }
                     .rethrow
                 }
             }
-            PDS::Grammar.new.error("boom", :$styles)
+            PDS::Grammar.new.fatal-error("boom", :$styles, :$source)
         },
         X::PDS::ParseError,
-        message =>
-            context-expectations
-            & decoration-expectations
-            & / "zap" /,
-        "exception information & decorations are propagated on rethrow";
+        source => source,
+        report => { .annotations ~~ %annotations },
+        message => / "At the start of the script" /,
+        "exception information & annotations are propagated on rethrow",
+    );
 }
 
 rethrow-ok();

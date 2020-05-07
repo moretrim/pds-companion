@@ -46,7 +46,9 @@ unit sub MAIN(
     #| comma-separated list of extensions for the files of interest (default: ‘txt’)
     Str :$exts = "txt",
 
-    #| comma-separated list of kinds of remarks to display (default: none, possible kinds: ‘opinion’)
+    # N.b. have to hardcode Kind enumerators here
+    #| comma-separated list of kinds of remarks to display (default: empty; possible kinds: ‘quirk’, ‘convention’,
+    #| ‘missing-localisation’, ‘missing-info’, ‘opinion’), or special value ‘all’ by itself to display all kinds
     Str :$remarks = "",
 );
 
@@ -65,7 +67,17 @@ $whitelist = do given $whitelist -> $_ --> Str {
     when * eqv False { Nil }
     default          { $_ andthen .Str orelse Nil }
 }
-my List:D \whitelist = do with $whitelist { .IO.lines.grep(''.none)».&{.trim.IO.cleanup} } // ();
+my List:D \whitelist = do with $whitelist {
+    .IO.lines.grep(
+        # skip the following lines...
+        (
+            # blank line
+            '',
+            # leading ‘#’ introduces a comment line
+            / ^ \s* "#" /
+        ).none
+    )».&{.trim.IO.cleanup}
+} // ();
 
 my \exts = $exts.split(",")».fc.any;
 my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
@@ -80,11 +92,70 @@ my IO:D @files = gather {
     }
 }
 
-my \remarks = do {
+my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
+    PDS::Remark::Kind::.values.Set (-) PDS::Remark::Error
+} else {
     constant Kind = PDS::Remark::Kind;
-    my \kinds = Kind.enums.keys.map({ .fc => Kind::{$_} }).Map;
-    $remarks.split(",")».&{kinds{.fc}}.grep(*.defined).Set
-};
+    my \kinds = Kind::.grep(*.value !eqv Kind::Error).map({ .key.fc => .value }).Map;
+    my (\spec, \unrecognised) =
+        (
+            $remarks
+            ==> split(",", :skip-empty)
+            ==> map({ kinds{.trim.fc} // .Str })
+            ==> classify({ $_ ~~ Kind ?? "spec" !! "unrecognised" })
+        )<spec unrecognised>;
+
+    sub prominent-usage(Str:D $_) { $styles.attention($_) }
+    sub remarks-parameter()       { $styles.important("--remarks") }
+    sub remarks-argument($_, Str:D :$joiner = ", ") {
+        .unique.map({ my \kind = $styles.alert($_); }).join($joiner)
+    }
+
+    given spec, unrecognised {
+        when :so, :so {
+            note-warning(qq:to«END».chomp)
+            Ignoring the following unrecognised remark kinds in &remarks-parameter(): &remarks-argument(unrecognised)
+            END
+        }
+
+        when :not, :so {
+            my \reason = qqw:to«END».join(" ");
+            &prominent-usage("because the following remark kinds are not recognised:")
+            &remarks-argument(unrecognised, joiner => prominent-usage(", "))
+            END
+
+            my \extra-explanation = do if unrecognised.any.trim.fc eq "all".fc {
+                (
+                    prominent-usage("(‘"),
+                    $styles.important("all"),
+                    &prominent-usage("’ is not a valid comma-list item, it must be used by itself: "),
+                    $styles.code("--remarks=all"),
+                    &prominent-usage(")"),
+                ).join
+            } else {
+                Empty
+            }
+
+            my \remarks-usage = (
+                (
+                    remarks-parameter(),
+                    prominent-usage(" argument is not understood "),
+                    reason,
+                ).join,
+                extra-explanation,
+            ).join("\n");
+
+            note(qq:to«END».chomp);
+            {remarks-usage}
+
+            $*USAGE
+            END
+            exit(1)
+        }
+    }
+
+    spec.Set
+}
 
 # preliminaries
 
@@ -120,17 +191,16 @@ constant victoria2-fallback = PDS::Unstructured;
 sub note-warning(Str:D \msg --> Bool:D)
 {
     constant header = "WARNING";
-    constant styles = "bold red";
     my \lines = msg.split("\n");
 
     if lines.elems <= 1 {
-        my \styled-header       = $styles.style("‣ {header}", styles);
+        my \styled-header       = $styles.alert("‣ {header}");
 
         note "{styled-header} {lines[0]}"
     } else {
-        my \styled-header       = $styles.style("┌ {header}", styles);
-        my \styled-continuation = $styles.style("│ ", styles);
-        my \styled-closer       = $styles.style("└ ", styles);
+        my \styled-header       = $styles.alert("┌ {header}");
+        my \styled-continuation = $styles.alert("│ ");
+        my \styled-closer       = $styles.alert("└ ");
 
         note qq:to«END».chomp
         {styled-header} {lines[0]}{lines[1..^(*-1)].map("\n" ~ styled-continuation ~ *).join}
@@ -147,11 +217,11 @@ class ProcessResult {
     has $.remarks;
 
     method status(--> status::status:D) {
-        given is-whitelisted($.path, whitelist), $.result {
-            when !*, Failure.none { status::success }
-            when ?*, Failure      { status::expected-failure }
-            when !*, Failure      { status::failure }
-            when ?*, Failure.none { status::unexpected-success }
+        given is-whitelisted($.path, whitelist), ($.result, $.remarks.map(*.kind).cache) {
+            when !*, (Failure.none, Any) & (Any, { .none eqv PDS::Remark::Error }) { status::success }
+            when ?*, (Failure,      Any) | (Any, {  .any eqv PDS::Remark::Error }) { status::expected-failure }
+            when !*, (Failure,      Any) | (Any, {  .any eqv PDS::Remark::Error }) { status::failure }
+            when ?*, (Failure.none, Any) & (Any, { .none eqv PDS::Remark::Error }) { status::unexpected-success }
         }
     }
 }
@@ -162,10 +232,10 @@ sub process-file(IO:D \file --> ProcessResult:D)
     my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.List) });
     if candidates.elems > 1 {
         note-warning qq:to«END».chomp
-        File ‘{file.path}’ is ambiguous because its path matches the following:
-        • {candidates.map({ "‘{.where.join("/")}’ for {.descr}" }).join("\n• ")}
+        File {$styles.quote-path(file.path)} is ambiguous because its path matches the following:
+        • {candidates.map({ "{$styles.quote-path(.where.join("/"))} for {.descr}" }).join("\n• ")}
         It is being treated as if it were part of the {candidates[0].descr}.
-        Possible fix: point $*PROGRAM-NAME to a higher base path to help disambiguate.
+        Possible fix: point $styles.attention($*PROGRAM-NAME) to a higher base path to help disambiguate.
         END
     }
     my \grammar = candidates ?? candidates[0] !! victoria2-fallback;
@@ -228,65 +298,136 @@ my \duration = stop - start;
 my \count-width = [max] results.values.map({ .elems.chars });
 
 my \number = {
-    file => { $_ <= 1 ?? "file " !! "files" },
-    it   => { $_ <= 1 ?? "it"    !! "they" },
-    was  => { $_ <= 1 ?? "was"   !! "were" },
+    file     => { $_ <= 1 ?? "file "    !! "files" },
+    it       => { $_ <= 1 ?? "it"       !! "they" },
+    was      => { $_ <= 1 ?? "was"      !! "were" },
+    contains => { $_ <= 1 ?? "contains" !! "contain" },
 };
 
-sub style-outcome(\items, &descr, \styles, Bool :$explain)
+sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
 {
     if items {
         my \count = items.elems;
-        my \fancied = $styles.style("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
+        my \count-report = $styles.style("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
 
-        my \explanations = do if $explain {
-            ":\n\n" ~ do if items».result.any ~~ Failure {
-                items».&{ given .result { .exception ~ .backtrace.nice.chomp } }.join("\n\n").indent(8)
-            } else {
-                items».path.join("\n").indent(8)
+        sub source($_) { $_ andthen $styles.quote-path($_) orelse $styles.important("<unspecified>") }
+
+        my \file-report = do if $list-files {
+            qq:to«END».chomp
+            {
+                items.map({
+                    "{source(.path.path)}"
+                }).join("\n")
             }
-        } else {
-            "."
-        }
-
-        my \spacing = $explain ?? "\n\n    " !! " ";
-
-        my \candidates = items.grep({ ([(+)] .remarks.map(*.kinds)) ∩ remarks }).List;
-        my \remark-report = do if candidates.map(*.remarks).flat {
-            sub format-remarks(\remarks --> Str:D) {
-                my \line-width = [max] remarks.cache».&{.line.chars};
-
-                remarks.map({
-                    my \plain-prefix = "line {.line.fmt("%{line-width}d")}: ";
-                    my \line-prefix = "line {$styles.style(.line.fmt("%{line-width}d"), "blue")}: ";
-                    line-prefix ~ .message.indent(plain-prefix.chars).trim-leading.chomp
-                }).join("\n").indent(4)
-            }
-
-            qq:to«END»;
-            {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
-
-            {candidates».&{ "in ‘{$styles.quote-path(.path.path)}’:\n{format-remarks(.remarks)}" }.join("\n\n").indent(4)}
             END
         } else {
-            ""
+            Empty
         }
 
-        qq:to«END»;
-          • {fancied} {descr(count)}{explanations}{spacing}{remark-report}
+        my \failure-report = do if $explain && (my \failures = items.grep({ .result.any ~~ Failure }).List) {
+            qq:to«END».chomp
+            {number<it>(count).tc} produced the following $styles.alert("failures"):
+            {
+                failures.map({
+                    qq:to«END».chomp
+                    In {source(.path.path)}:
+                    {given .result { (.exception.message, .backtrace.nice.chomp).join("\n").indent(4) }}
+                    END
+                }).join("\n\n").indent(4)
+            }
+            END
+        } else {
+            Empty
+        }
+
+        my \error-report = do if $explain
+                                 && (my \errors = items.grep({ PDS::Remark::Error ∈ .remarks.map(*.kind) }).List) {
+            qq:to«END».chomp
+            {number<it>(count).tc} {number<contains>(count)} the following $styles.alert("errors"):
+            {
+                errors.map({
+                    qq:to«END».chomp
+                    In {source(.path.path)}:
+                    {
+                        .remarks.grep({ .kind eqv PDS::Remark::Error }).classify(*.kind).sort(*.key).map({
+                            PDS::Report::format-reports(.value.sort(*.contexts».key.min)).join("\n\n")
+                        }).join("\n\n").indent(4)
+                    }
+                    END
+                }).join("\n\n").indent(4)
+            }
+            END
+        } else {
+            Empty
+        }
+
+        my \remark-report = do if my \remarks = items.grep({ .remarks.map(*.kind) ∩ remarks-of-interest }).List {
+            qq:to«END».chomp
+            {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
+            {
+                remarks.map({
+                    qq:to«END».chomp
+                    In {source(.path.path)}:
+                    {
+                        .remarks.grep({ .kind ∈ remarks-of-interest }).classify(*.kind).sort(*.key).map({
+                            my \attrs = .key.&PDS::Remark::kind-attrs(:$styles);
+                            qq:to«END».chomp
+                            {attrs<descr>}:
+                            {PDS::Report::format-reports(.value.sort(*.contexts».key.min)).join("\n\n").indent(4)}
+                            END
+                        }).join("\n\n").indent(4)
+                    }
+                    END
+                }).join("\n\n").indent(4)
+            }
+            END
+        } else {
+            Empty
+        }
+
+        qq:to«END».chomp
+         • {count-report} {descr(count)}{$list-files ?? ":\n    " !! ". "}{
+            (
+                file-report,
+                failure-report,
+                error-report,
+                remark-report,
+            ).join("\n\n").indent(4).trim-leading
+        }
         END
     } else {
-        Nil
+        Empty
     }
 }
 
 put qq:to«END»;
-Processed all {@files.elems <= 1 ?? "file" !! "files"} in {duration.fmt("%.2fs")}:
+Processed all {number<file>(@files.elems)} in {duration.fmt("%.2fs")}:
 END
 
-.print with style-outcome(results{status::success}, { "{number<was>($_)} successfully accepted" }, "green");
-.print with style-outcome(results{status::expected-failure}, { "from the whitelist {number<was>($_)} rejected as expected" }, "green");
-.print with style-outcome(results{status::failure}, { "{number<was>($_)} unexpectedly rejected" }, "red", :explain);
-.print with style-outcome(results{status::unexpected-success}, { "from the whitelist {number<was>($_)} accepted when {number<it>($_)} should have been rejected" }, "red", :explain);
+(
+    style-outcome(
+        results{status::success},
+        { "{number<was>($_)} successfully accepted" },
+        "green",
+    ),
+    style-outcome(
+        results{status::expected-failure},
+        { "from the whitelist {number<was>($_)} rejected as expected" },
+        "green",
+    ),
+    style-outcome(
+        results{status::failure},
+        { "{number<was>($_)} unexpectedly rejected" },
+        "red",
+        :explain,
+    ),
+    style-outcome(
+        results{status::unexpected-success},
+        { "from the whitelist {number<was>($_)} accepted when {number<it>($_)} should have been rejected" },
+        "red",
+        :explain,
+        :list-files,
+    ),
+).join("\n").put;
 
 exit(1) if results{status::failure}.any | results{status::unexpected-success}.any

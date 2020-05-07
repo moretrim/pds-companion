@@ -17,8 +17,9 @@ use lib 'lib';
 use PDS;
 use PDS::Styles;
 
-my Styles:D $styles = Styles.new(Styles::never);
-my PDS::Grammar:D \test-grammar = PDS::Unstructured.new(source => $?FILE);
+my Styles:D     $styles       = Styles.new(Styles::never);
+my Str:D        $source       = $?FILE;
+my PDS::Grammar \test-grammar = PDS::Unstructured;
 
 my \pds-script = q:to«END»;
   # a
@@ -41,9 +42,10 @@ my \expectations = [
     '"hallo"' => 'welt',
 ];
 
-is-deeply
-    soup(test-grammar, pds-script, :$styles),
+is-deeply(
+    PDS::soup(test-grammar, pds-script, :$styles, :$source),
     expectations,
-    "can we handle whitespace and comments";
+    "can we handle whitespace and comments",
+);
 
 done-testing;

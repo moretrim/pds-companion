@@ -18,15 +18,17 @@ use PDS;
 use PDS::Styles;
 use PDS::Victoria2;
 
-my Styles:D $styles = Styles.new(Styles::never);
-my PDS::Grammar:D \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
+my Styles:D     $styles        = Styles.new(Styles::never);
+my Str:D        $source        = $?FILE;
+my PDS::Grammar \event-grammar = PDS::Victoria2::Events;
 
 use lib 't/resources';
 use vic2-model-event00;
 
-is-deeply
-    soup(event-grammar, vic2-model-event00::resource, :$styles),
-    soup(PDS::Unstructured, vic2-model-event00::resource, :$styles),
-    "are we parsing everything that the unstructed grammar does";
+is-deeply(
+    PDS::soup(event-grammar, vic2-model-event00::resource, :$styles, :$source),
+    PDS::soup(PDS::Unstructured, vic2-model-event00::resource, :$styles, :$source),
+    "are we parsing everything that the unstructed grammar does",
+);
 
 done-testing;

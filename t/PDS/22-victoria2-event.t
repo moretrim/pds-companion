@@ -18,8 +18,9 @@ use PDS;
 use PDS::Styles;
 use PDS::Victoria2;
 
-my Styles:D $styles = Styles.new(Styles::never);
-my PDS::Grammar:D \event-grammar = PDS::Victoria2::Events.new(source => $?FILE);
+my Styles:D     $styles       = Styles.new(Styles::never);
+my Str:D        $source       = $?FILE;
+my PDS::Grammar \event-grammar = PDS::Victoria2::Events;
 
 my \pds-script = q:to«END»;
 country_event = {
@@ -49,9 +50,10 @@ my \expectations = [
     ]
 ];
 
-is-deeply
-    soup(event-grammar, pds-script, :$styles),
+is-deeply(
+    PDS::soup(event-grammar, pds-script, :$styles, :$source),
     expectations,
-    "can we parse a country event";
+    "can we parse a country event",
+);
 
 done-testing;

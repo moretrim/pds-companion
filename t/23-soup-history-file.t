@@ -17,11 +17,12 @@ use lib 'lib';
 use PDS;
 use PDS::Styles;
 
-my Styles:D $styles = Styles.new(Styles::never);
-my PDS::Grammar:D \test-grammar = PDS::Unstructured.new(source => $?FILE);
+my Styles:D       $styles       = Styles.new(Styles::never);
+my Str:D          $source       = $?FILE;
+my PDS::Grammar   \test-grammar = PDS::Unstructured;
 
-use lib 't';
-use resources::vic2-model-country-history00;
+use lib 't/resources';
+use vic2-model-country-history00;
 
 my \expectations = [
     capital => 1167,
@@ -102,9 +103,10 @@ my \expectations = [
     ],
 ];
 
-is-deeply
-    soup(PDS::Unstructured, vic2-model-country-history00::resource, :$styles),
+is-deeply(
+    PDS::soup(PDS::Unstructured, vic2-model-country-history00::resource, :$styles, :$source),
     expectations,
-    "can we parse a representative country history file";
+    "can we parse a representative country history file",
+);
 
 done-testing;

@@ -22,106 +22,256 @@ unit module PDS;
 use PDS::remake;
 use PDS::Styles;
 
-=head2 Error Reporting
+=head2 Source Report
 
-#| Base exception for all parsing errors.
-#|
-#| Thrown when a L<PDS::Grammar> reports an error.
-class GLOBAL::X::PDS::ParseError does Styles::Stylish is Exception {
-    has Str $.source  is rw;
-    has %.decorations is rw;
-    has Str $.target  is rw;
-    has Int $.pos     is rw;
-    has Int $.line    is rw;
-    has Str $.msg     is rw;
-    has Str $.context is rw;
+#| A source context is a line number, acting as the line focus, together with part of the source script.
+subset Context of Pair where { (.key, .value) ~~ (Int:D, Str:D) }
 
-    method message(--> Str:D) {
-        my \source = do $.source andthen $.styles.quote-path($_) orelse $.styles.attention("<unspecified>");
-        my \line   = $.styles.attention(~$.line);
-        my \decoration-header = %.decorations ?? 'With the following extra information:' !! '';
-        qq:to«END».chomp;
-        Error while parsing {source} at line {line}:
-        $.context.indent(4)
-        $.msg
-        {decoration-header}{ %.decorations.map({ "\n    {.key} => {.value.gist}" }) }
-        END
+# L<Contextualising> is a supporting role for the purpose of making reports. Due to order of definition concerns, it
+# appears after L<Scaffolding>.
+
+#| A source report is a human-friendly message, together with a number of line-annotated, formatted excerpts from the
+#| original source.
+class Report does Styles::Stylish {
+    ## Definitional report information, participates in WHICH
+
+    has #`(Context) @.contexts is List:D; #=[ L<Context> pairs of (line => formatted source) context information
+                                              relevant to the report
+                                          ]
+    has Str:D       $.message = "";       #= human-friendly message
+
+    ## Extraneous report information, does not participate in WHICH (neither does $.styles)
+
+    has %.annotations is rw; #= extra report information
+
+    method WHICH(--> ValueObjAt:D) {
+        ValueObjAt.new(($.^name, |(self andthen @.contexts.WHICH, $.message.WHICH)).join("|"))
+    }
+
+    #| Turn a single report into human-friendly text. The format has three possible outcomes.
+    method format-report(
+        Int:D :$first-column-width = 0, #= for alignment purposes
+        --> Str:D
+    ) {
+        # refer to `Contextualising::&context` to see why line 0 really means the start of the script
+        sub line-location(Int:D $_) {
+            when 0  { "at $.styles.attention("the start of the script")" }
+            default { "around line $.styles.attention(.fmt("%{$first-column-width}d"))" }
+        }
+
+        sub format-context(Str:D $_) {
+            when "" { Empty }
+            default { .indent(4) }
+        }
+
+        my \formatted-contexts = do given @.contexts {
+            when .elems == 1 {
+                (
+                    line-location(.[0].key).tc,
+                    format-context(.[0].value),
+                ).join(": \n")
+            }
+
+            default {
+                qq:to«END».chomp;
+                In the following:
+                {
+                    .map({
+                        (
+                            "‣ &line-location(.key)",
+                            format-context(.value)
+                        ).join("\n"),
+                    }).join("\n")
+                }
+                END
+            }
+        }
+
+        my \annotation-header = %.annotations ?? "\nThe following extra information is included:" !! "";
+        my \annotation-report = "{annotation-header}{ %.annotations.map({ "\n    {.key} => {.value.gist}" }) }";
+
+        (
+            formatted-contexts,
+            "{$.message}{$.styles.unimportant(annotation-report.indent(4))}"
+        ).join("\n")
+    }
+
+    #| Turn multiple reports into human-friendly text at once. Performs some alignment.
+    our sub format-reports(
+        #`(::?CLASS) @reports,
+        --> List:D
+    ) {
+        my \line-width = [max] @reports.map({ .contexts.map({ .key.chars.Slip }).Slip });
+        @reports.map({
+            .format-report(first-column-width => line-width)
+        }).List
     }
 }
 
-#| Count of context lines for the purposes of error messages.
-constant error-context-lines = %(:4before, :2after);
+multi infix:«eqv»(Report:D \left, Report:D \right --> Bool:D) is export
+{ (left.contexts, left.message) eqv (right.contexts, right.message) }
 
-#| Role for easily reporting parsing errors.
+=head2 Errors & Remarks
+
+#| Base exception for all fatal parsing errors.
+#|
+#| Thrown when a L<PDS::Grammar> reports a fatal error and parsing cannot proceed any further.
+class GLOBAL::X::PDS::ParseError is Exception {
+    has $.source is rw;
+    has Report $.report handles «styles contexts format-report :message("format-report")»;
+}
+
+#| Enable L<Match> to report fatal errors. Assumes L<Contextualising>.
 role ErrorReporting {
-    #| Throw an L<X::PDS::ParseError>.
-    method error(
-        ::?CLASS:D:
-        $msg,                #= reason for failure to parse
-        :$styles = $*STYLES, #= style override, useful when not called from a parse e.g. during testing
-        *%decorations,       #= additional information
+    #| When parsing cannot proceed any further, throw a L<X::PDS::ParseError>.
+    method fatal-error(
+        $reason,                        #= reason for failure to parse
+        #`(::?CLASS) :@extra-locs = (), #= extra source locations relevant to the report
+        :$styles = $*STYLES,            #= style override, useful when not called from a parse e.g. during testing
+        :$source = $*SOURCE,            #= source override
+        *%annotations,                  #= additional information
     ) {
-        my \accepted = self.target.substr(0, self.pos);
-        my $line = accepted.lines.elems;
-        my \before = accepted.lines[* - error-context-lines<before> .. *];
-        my \after = self.target.substr(accepted.chars).lines[0 .. error-context-lines<after>]:v;
-        my \cursor = $styles.important("‸");
-        my $context = before.join("\n") ~ cursor ~ after.join("\n");
-
+        my @contexts = (self.context(:$styles, :focus-anchor), |@extra-locs.map({ .context(:$styles) }));
         X::PDS::ParseError.new(
-            :$styles,
-            :$.target,
-            :$.pos,
-            :$line,
-            :$msg,
-            :$context,
-            :%decorations,
+            report => Report.new(
+                :$styles,
+                :@contexts,
+                message => $reason,
+                :%annotations,
+            )
         ).throw
     }
 
     method FAILGOAL($goal) {
-        self.error("expected closing $goal.trim()");
+        self.fatal-error("expected closing $goal.trim()");
     }
 }
 
-=head2 Remarks
-
-#| When something is not quite a parsing error that needs to be reported through L<ErrorReporting::error>, a grammar can
-#| instead report it as a remark. This should only happen for things that:
+#| When something is not quite a fatal error that needs to be reported through L<fatal-error>, a grammar can instead
+#| report it as a remark. Assumes L<Contextualising>.
 #|
-#| - are noncritical, i.e. does not involve malformed script that would be rejected by the game
-#| - cannot or should not be handled in parse actions
+#| Fatal errors (reported by L<fatal-error> by throwing a L<X::PDS::ParseError>) and remarks with kind L<Error> together
+#| constitute all errors that can be found within a script. Remarks of a different kinds serve a more advisory role.
 class Remark {
-    #| A L<Remark> can have several kinds. They are:
-    #|
-    #| - C<Opinion>: Hints to help write consistent PDS script. As suggested by the name, this reflects this author's
-    #|   opinions and may not suit everybody. This kind of remarks is mostly intended for new script, as it can be very
-    #|   noisy when run on already-existing script.
-    enum Kind «Opinion»;
+    #| A L<Remark> has exactly one kind. The kind value is useful for sorting, with least value (starting from zero)
+    #| meaning most urgent priority.
+    enum Kind « Error Quirk Convention Missing-Localisation Missing-Info Opinion »;
 
-    has Int $.line;
-    has Set $.kinds;
-    has Str $.message;
+    #| Each L<Kind> symbol is associated with the following attributes:
+    #| - C<.<descr>>, which describes its purpose
+    #|
+    #| This is provided as an external method and not as the enumerator value to prevent enumerator confusion (e.g.
+    #| performing set operations such as intersection or inclusion on the symbols, and not their values).
+    our method kind-attrs(Kind:D $_: Styles:D :$styles! --> Map:D) {
+        when Error {
+            %(
+                descr => qq:to«END».chomp,
+                $styles.important("Errors") in the script that the game cannot handle.
+                These should be resolved to prevent the game from crashing or behaving erratically
+                END
+            ).Map
+        }
+
+        when Quirk {
+            %(
+                descr => qq:to«END».chomp,
+                $styles.important("Quirks") from the game that are usually undesirable to modders
+                END
+            ).Map
+        }
+
+        when Convention {
+            %(
+                descr => qq:to«END».chomp,
+                $styles.important("Conventions") common among modders.
+                Suggested so that the code can be better understood by others
+                END
+            ).Map
+        }
+
+        when Missing-Localisation {
+            %(
+                descr => qqw:to«END».join(" "),
+                $styles.important("Missing localisation") that results in the game showing internal strings, which is
+                not fatal but can confuse players
+                END
+            ).Map
+        }
+
+        when Missing-Info {
+            %(
+                descr => qqw:to«END».join(" "),
+                $styles.important("Missing information") (other than localisation text) that is not fatal
+                END
+            ).Map
+        }
+
+        when Opinion {
+            %(
+                descr => qqw:to«END».join(" "),
+                $styles.important("Matters of opinion"), for writing consistent PDS script
+                END
+            ).Map
+        }
+    }
+
+    has Kind:D $.kind = Error;
+    has Report $.report handles «styles contexts format-report»;
 
     method WHICH(--> ValueObjAt:D) {
-        ValueObjAt.new((.^name, $.line, $.kinds.WHICH, $.message).join("|")) given self
+        ValueObjAt.new(($.^name, |(self andthen $.kind.WHICH, $.report.WHICH)).join("|"));
     }
 }
 
-#| Role for easily storing remarks.
-role Remarking {
-    method line-hint(--> Int:D) {
-        my \parsed = self.target.substr(0, self.pos).trim-trailing;
-        parsed.lines.elems
-    }
+multi infix:«eqv»(Remark:D \left, Remark:D \right --> Bool:D) is export
+{
+    [&&] (left.kind, left.report) Zeqv (right.kind, right.report)
+}
 
-    multi method remark(Set:D[Remark::Kind:D] $kinds where { so $_ }, Str:D $message) {
-        @*REMARKS.push(Remark.new(line => self.line-hint, :$kinds, :$message));
+#| Convenience for e.g. using L<cmp-ok> instead of L<is-deeply>, since lexical scoping means that L<List>’s
+#| C<infix:«eqv»> cannot hope to find our own L<infix:«eqv»> multis.
+our sub eqv-remarks(@left, @right)
+{ @left.elems == @right.elems && [&&] @left Zeqv @right }
+
+#| Store remarks.
+role Remarking {
+    method remark(
+        Remark::Kind:D $kind,                #= kind of remark
+        Str:D $message,                      #= message to attach to the context
+        #`(::?CLASS) :@extra-locs = (),      #= extra source locations relevant to the remark
+        Bool :$preserve-trailing-whitespace, #=[ preserve trailing whitespace from the context anchors (useful e.g. when
+                                                 the report is about that whitespace)
+                                             ]
+    ) {
+        my $styles = $*STYLES;
+        my @contexts = (
+            self.context(:$styles, :focus-anchor, :$preserve-trailing-whitespace),
+            |@extra-locs.map({ .context(:$styles, :$preserve-trailing-whitespace) })
+        );
+        @*REMARKS.push(Remark.new(:$kind, report => Report.new(:$styles, :@contexts, :$message)));
         Nil
     }
 
-    multi method remark(Remark::Kind:D $kind, Str:D $message) {
-        self.remark(set($kind), $message)
+    # Conveniences
+
+    method error(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Error, $message, :@extra-locs)
+    }
+
+    method quirk(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Quirk, $message, :@extra-locs)
+    }
+
+    method missing-localisation(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Missing-Localisation, $message, :@extra-locs)
+    }
+
+    method missing-info(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Missing-Info, $message, :@extra-locs)
+    }
+
+    method opinion(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Opinion, $message, :@extra-locs)
     }
 }
 
@@ -137,7 +287,7 @@ role Scaffolding {
     }
     method catch-non-standard-comment-header() {
         for self<comment-header>.grep({ $_ eq ';' }) {
-            .remark(Remark::Opinion, qq:to«END».chomp)
+            .opinion(qq:to«END».chomp, :preserve-trailing-whitespace)
             Use of non-standard comment header {$*STYLES.code-quote(";")}, prefer {$*STYLES.code-quote("#")}.
             END
         }
@@ -218,11 +368,75 @@ role Scaffolding {
     }
 }
 
+#| Enable L<Match> to produce context information, for the purpose of human-friendly reports.
+role Contextualising[\context-info = %(:3before, :3after, :120anchor-length)] {
+    #| Produce a source L<Context>, using C<self> as an anchor.
+    method context(
+        Styles:D :$styles!,                  #= styling to use
+        Bool :$focus-anchor,                 #=[ by default the anchor uses highlight styles, this sets it to use focus
+                                                 instead
+                                             ]
+        Bool :$preserve-trailing-whitespace, #=[ preserve trailing whitespace from the C<self> anchor (useful e.g. when
+                                                 the report is about that whitespace)
+                                             ]
+        --> Context:D
+    ) {
+        my grammar Whitespace does Scaffolding {
+            # break self-referential knot that would otherwise be redundant
+            method catch-non-standard-comment-header() {}
+        }
+
+        my (\target, \pos, \chars)   = do with self { .target, .pos, .chars };
+        my (\anchor, \trail) = do if not $preserve-trailing-whitespace {
+            self.Str.split(/ <.ws=.Whitespace::ws> $ /, 2, :v)
+        } else {
+            self.Str, ""
+        }
+
+        my \accepted = target.substr(0, pos - chars);
+        my \rejected = trail ~ target.substr(pos);
+        my \sep      = accepted.ends-with("\n") ?? "\n" !! "";
+        # N.b. zero if and only if `pos` is zero, which is the case when matching the very first character or when
+        # parsing fails
+        my $line     = accepted.lines.elems;
+        my $before   = accepted.lines[((* - context-info<before>) max 0) .. *];
+        my \after    = rejected.lines[0 .. context-info<after>]:v;
+
+        my \non-blank = $before.first(none(/ ^ \h* $ /), :k) // Empty; # don't use Whitespace because comments are
+                                                                       # useful for establishing context
+        $before = $before[non-blank .. *];
+
+        my &style-anchor = do if $focus-anchor {
+            sub focus-anchor(Str:D $_) { $styles.code-focus($_) }
+        } else {
+            sub highlight-anchor(Str:D $_) { $styles.code-highlight($_) }
+        }
+
+        my \styled-truncated-anchor = do if anchor.chars <= context-info<anchor-length> {
+            style-anchor(anchor)
+        } else {
+            style-anchor(anchor.substr(0, context-info<anchor-length>)) ~ $styles.unimportant("…\n" ~ "⋯✂⋯" x 9)
+        }
+
+        $line => (
+            $styles.code($before.join("\n")),
+            $styles.code(sep),
+            styled-truncated-anchor,
+            $styles.code(after.join("\n")),
+        ).join
+    }
+
+    #| The fragment of the line immediately preceding the current match.
+    method preceding($_: --> Str:D) {
+        .target.substr(0, .pos - .chars).lines[*-1]
+    }
+}
+
 #| Base PDS script grammar. Handles everything that is common to all PDS script, though not able to parse any kind of
 #| file. For that latter purpose see specific inheriting grammars or L<PDS::Unstructured>.
 #|
 #| Inheriting grammars should conform to the soup protocol if they want to play nice with L<PDS::soup>.
-grammar Grammar does ErrorReporting does Remarking does Scaffolding {
+grammar Grammar does Contextualising does ErrorReporting does Remarking does Scaffolding {
     ## PDS script data types
 
     token text { <soup=.identifier> | <soup=.quoted-identifier> }
@@ -248,6 +462,201 @@ grammar Grammar does ErrorReporting does Remarking does Scaffolding {
     # ??? Dear Raku, why must my parameter be optional especially if you seemingly always call the method with an
     # argument
     multi regex kw(Str $word?) { :r:i « $word » }
+    # In lieu of permutation parsing, expectation methods can be composed to validate parses. Expectations deal with
+    # three grammar elements:
+    #
+    # - the anchor: a parse within the outermost element of interest, typically they key of key–value pair e.g.:
+    #
+    #       this_is_the_anchor = { …
+    #
+    # - the focus (self): some element of interest within the anchor, usually its immediate value block
+    # - the target: the innermost element of interest, child of the focus, typically a key–value pair
+    #
+    # Of the three the anchor and the focus are definite elements that have already been successfully parsed or
+    # validated. The target is the object of validation by the expectation. These three levels allow for writing helpful
+    # diagnostics.
+    #
+    # These diagnostics are made customisable by allowing the caller to override message fragments.
+
+    ## General expectations
+
+    method prefer-none(
+        Match:D \anchor, Str:D \target,
+        Remark::Kind:D \default-kind = Remark::Opinion,
+        :%kinds = %(),
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Pair:D       :$too-many           =
+            ((%kinds{Inf} // default-kind) => { "$^a:element has an unexpected $^b:entry entry" }),
+        --> Bool
+    ) {
+        given self{target} {
+            when .elems != 0 {
+                @extra-locs.append(.[1..*]);
+                .[0].remark($too-many.key, $too-many.value.($element, $entry).chomp, :@extra-locs)
+            }
+            default          { True }
+        }
+    }
+
+    method prefer-one(
+        Match:D \anchor, Str:D \target,
+        Remark::Kind:D \default-kind = Remark::Opinion,
+        :%kinds = %(),
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Pair:D       :$missing            =
+            ((%kinds{0} // default-kind)   => { "$^a:element is missing a valid $^b:entry entry" }),
+        Pair:D       :$too-many           =
+            ((%kinds{Inf} // default-kind) => { "$^a:element has more than one $^b:entry entry" }),
+        --> Match #`(::?CLASS)
+    ) {
+        given self{target} {
+            when .elems == 1 {
+                .[0]
+            }
+
+            when .elems == 0 {
+                anchor.remark($missing.key, $missing.value.($element, $entry).chomp, :@extra-locs)
+            }
+
+            default {
+                @extra-locs.append(.[1..*]);
+                .[0].remark($too-many.key, $too-many.value.($element, $entry).chomp, :@extra-locs)
+            }
+        }
+    }
+
+    method prefer-yes(
+        Match:D \anchor, Str:D \target,
+        Remark::Kind:D \default-kind = Remark::Opinion,
+        :%kinds = %(),
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Str:D        :$expected           = $*STYLES.code-quote("{target} = {$*STYLES.code-focus("yes")}"),
+        Pair:D   :$missing                =
+            ((%kinds{0} // default-kind)   => { "$^a:element is missing a valid $^b:entry entry ($expected was expected)" }),
+        Pair:D   :$too-many               =
+            ((%kinds{Inf} // default-kind) => { "$^a:element has more than one $^b:entry entry" }),
+        Pair:D   :$unexpected-no          =
+            ((%kinds{1} // default-kind)   => { "$^b:entry entry of $^a:element set to $*STYLES.code("no") when $*STYLES.code-focus("yes") was expected" }),
+        --> Bool:D
+    ) {
+        given $.prefer-one(anchor, target, :@extra-locs, :$element, :$entry, :$missing, :$too-many) {
+            when !.&explicit-yes {
+                .remark($unexpected-no.key, $unexpected-no.value.($element, $entry).chomp);
+                False
+            }
+
+            default {
+                True
+            }
+        }
+    }
+
+    method prefer-at-most-one(
+        Match:D \anchor, Str:D \target,
+        Remark::Kind:D \default-kind = Remark::Opinion,
+        :%kinds = %(),
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Pair:D       :$missing            =
+            ((%kinds{0} // default-kind) => { "$^a:element is missing a valid $^b:entry entry" }),
+        Pair:D       :$too-many           =
+        ((%kinds{Inf} // default-kind)   => { "$^a:element has more than one $^b:entry entry" }),
+        --> #`(::?CLASS) List
+    ) {
+        given self{target} {
+            when .elems > 1 {
+                @extra-locs.append(.[1..*]);
+                .[0].remark($too-many.key, $too-many.value.($element, $entry).chomp, :@extra-locs);
+                ()
+            }
+
+            default {
+                .[0..0]:v
+            }
+        }
+    }
+
+    method prefer-some(
+        Match:D \anchor, Str:D \target,
+        Remark::Kind:D \default-kind = Remark::Opinion,
+        :%kinds = %(),
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Pair:D       :$missing            =
+            ((%kinds{0} // default-kind) => { "$^a:element is missing a valid $^b:entry entry" }),
+        --> #`(::?CLASS) List
+    ) {
+        given self{target} {
+            when .elems == 0 {
+                anchor.remark($missing.key, $missing.value.($element, $entry).chomp, :@extra-locs);
+                ()
+            }
+
+            default {
+                .List
+            }
+        }
+    }
+
+    ## Error expectations
+
+    method expect-one(
+        Match:D \anchor, Str:D \target,
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Callable:D   :$missing            = { "$^a:element is missing a valid $^b:entry entry" },
+        Callable:D   :$too-many           = { "$^a:element has more than one $^b:entry entry" },
+        --> Match #`(::?CLASS)
+    ) {
+        $.prefer-one(
+            anchor, target, Remark::Error,
+            :@extra-locs, :$element, :$entry, missing => Remark::Error => $missing, too-many => Remark::Error => $too-many,
+        )
+    }
+
+    method expect-some(
+        Match:D \anchor, Str:D \target,
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Callable:D   :$missing            = { "$^a:element is missing a valid $^b:entry entry" },
+        --> #`(::?CLASS) List
+    ) {
+        self.prefer-some(
+            anchor, target, Remark::Error,
+            :@extra-locs, :$element, :$entry,
+            missing => Remark::Error => $missing,
+        )
+    }
+
+    method expect-yes(
+        Match:D \anchor, Str:D \target,
+        #`(::?CLASS) :@extra-locs is copy = (),
+        Str:D        :$element            = $*STYLES.code(anchor.Str),
+        Str:D        :$entry              = $*STYLES.code(target),
+        Str:D        :$expected           = $*STYLES.code-quote("{target} = {$*STYLES.code-focus("yes")}"),
+        Callable:D   :$missing            = { "$^a:element is missing a valid $^b:entry entry ($expected was expected)" },
+        Callable:D   :$too-many           = { "$^a:element has more than one $^b:entry entry" },
+        Callable:D   :$unexpected-no      = { "$^b:entry entry of $^a:element set to $*STYLES.code("no") when $*STYLES.code-focus("yes") was expected" },
+        --> Bool
+    ) {
+        $.prefer-yes(
+            anchor, target, Remark::Error,
+            :@extra-locs, :$element, :$entry,
+            missing       => Remark::Error => $missing,
+            too-many      => Remark::Error => $too-many,
+            unexpected-no => Remark::Error => $unexpected-no,
+        )
+    }
 }
 
 =begin pod
@@ -293,8 +702,9 @@ role Color {
 #| For ease of convenience consider using L<PDS::parse> rather than the stock L<Grammar::parse> method common to all
 #| grammars.
 grammar Unstructured is Grammar {
-    rule TOP(:$styles) {
+    rule TOP(Styles:D :$styles!, Str :$source) {
         :my $*STYLES = $styles;
+        :my $*SOURCE = $source;
         :my @*REMARKS;
         ^ @<entries>=<.entry>* $
         { remake($/, REMARKS => @*REMARKS) }
@@ -347,42 +757,48 @@ our sub kw(\ast where Any:U|Match --> Str:D) is export(:ast)
 #| * fails with L<PDS::ParseError> (with appropriate information filled-in) if parsing was not succesful, or returns a
 #|   L<Match>
 #| * throws in case of a different error
-our proto parse(Grammar \gram, Any:D \input, Mu :$actions = Mu, Styles:D :$styles = Styles.new --> Match:D)
+our proto parse(
+    Grammar \gram,                  #= L<PDS::Grammar> to perform the parsing
+    Any:D \input,                   #= PDS script data
+    Mu :$actions = Mu,              #= grammar actions
+    Styles:D :$styles = Styles.new, #= styling, for source reports purposes
+    Str :$source,                   #= name or shorthand designating the input
+    *%,
+    --> Match:D)
 { * }
 
 #| Parse from a L<Str>.
-multi parse(Grammar $gram is copy, Str:D() \input, Mu :$actions = Mu, Styles:D :$styles = Styles.new --> Match:D)
+multi parse(
+    Grammar $gram is copy, #= L<PDS::Grammar> to perform the parsing
+    Str:D() \input,        #= PDS script string to parse
+    Mu :$actions = Mu,     #= grammar actions
+    Styles:D :$styles,     #= styling, for source reports purposes
+    Str :$source = input,  #= name or shorthand designating the input
+    --> Match:D)
 {
     CATCH {
         when X::PDS::ParseError {
-            .source = "<string>";
             .fail
         }
         default { .rethrow }
     }
+    # seemingly required to stringify the top-level match or something to do with its attributes, don’t ask me
     $gram = $gram // $gram.new;
-    my $args = \(:$styles);
-    $gram.parse(input, :$actions, :$args)
-        // $gram.error("rejected by grammar {$gram.^name}.", :$styles)
+    my $args = \(:$styles, :$source);
+    $gram.parse(input, :$actions, :$args) // $gram.fatal-error("rejected by grammar {$gram.^name}", :$styles, :$source)
 }
 
 #| Parse from a file.
 multi parse(
-    Grammar \gram,
+    Grammar \gram,                #= L<PDS::Grammar> to perform the parsing
     IO:D() \path,                 #= path to file
     Str:D :$enc = "windows-1252", #= file encoding
-    Mu :$actions = Mu,
-    Styles:D :$styles = Styles.new,
+    Mu :$actions = Mu,            #= grammar actions
+    Styles:D :$styles,            #= styling, for source reports purposes
+    Str :$source = path.path,     #= name or shorthand designating the input
     --> Match:D
 ) {
-    CATCH {
-        when X::PDS::ParseError {
-            .source = path.Str;
-            .fail
-        }
-        default { .rethrow }
-    }
-    parse(gram, path.slurp(:$enc), :$actions, :$styles).self
+    parse(gram, path.slurp(:$enc), :$actions, :$styles, :$source)
 }
 
 #| Actions to turn the L<Match> produced by a L<PDS::Grammar> into into a tree-like array of items and pairs. See
@@ -453,7 +869,12 @@ class Soup {
 #| Turn PDS script into a tree-like array of items and pairs.
 #|
 #| Throws but does not fail, unlike L<PDS::Parse>.
-our sub soup(Grammar \gram, Str:D \input, Styles:D :$styles = Styles.new --> Array:D) is export
+our sub soup(
+    Grammar \gram,                  #= L<PDS::Grammar> to perform the parsing
+    Str:D() \input,                 #= PDS script string to parse
+    Styles:D :$styles = Styles.new, #= styling, for source reports purposes
+    Str :$source = input,           #= name or shorthand designating the input
+    --> Array:D)
 {
-    parse(gram, input, actions => Soup, :$styles).made<SOUP> or []
+    parse(gram, input, actions => Soup, :$styles, :$source).made<SOUP> or []
 }

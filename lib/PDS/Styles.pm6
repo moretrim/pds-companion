@@ -46,8 +46,9 @@ constant brackets = %(
     code      => (<｢ ｣>,    <｢ ｣>),
 );
 
-has &.styler;
-has &.quoter;
+has When:D $.initialiser = auto;
+has        &.styler;
+has        &.quoter;
 
 method new(::?CLASS:U: When:D \color = auto --> ::?CLASS:D) {
     my Bool:D \fancy = (Nil !=== try require Terminal::ANSIColor)
@@ -81,7 +82,24 @@ method new(::?CLASS:U: When:D \color = auto --> ::?CLASS:D) {
         )
     };
 
-    self.bless(:&styler, :&quoter)
+    self.bless(initialiser => color, :&styler, :&quoter)
+}
+
+method perl(::?CLASS: --> Str:D) {
+    (
+        $.^name,
+        do if $.defined {
+            my $initialiser = do given $.initialiser {
+                # Because L<auto> is the default and L<never> is typically used in tests, we ensure
+                # those two are aligned. This helps testers quickly scan the output of tests when
+                # looking for a difference.
+                when auto  { " auto" }
+                when never { "never" }
+                default    { .Str }
+            }
+            ".new($initialiser)"
+        },
+    ).join
 }
 
 method style(::?CLASS:D: Str:D \text, Str:D \styles --> Str:D) {
