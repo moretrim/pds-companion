@@ -25,7 +25,7 @@ use PDS::Styles;
 =head2 Source Report
 
 #| A source context is a line number, acting as the line focus, together with part of the source script.
-subset Context of Pair where { (.key, .value) ~~ (Int:D, Str:D) }
+subset Context of Pair where (.key, .value) ~~ (Int:D, Str:D);
 
 # L<Contextualising> is a supporting role for the purpose of making reports. Due to order of definition concerns, it
 # appears after L<Scaffolding>.
@@ -466,6 +466,14 @@ grammar Grammar does Contextualising does ErrorReporting does Remarking does Sca
     # ??? Dear Raku, why must my parameter be optional especially if you seemingly always call the method with an
     # argument
     multi regex kw(Str $word?) { :r:i « $word » }
+
+    ## Tokens
+
+    token this          { <soup=.kw("this")> }
+    token from          { <soup=.kw("from")> }
+    token tag           { :i <!before "yes"> $<item>=(«<[a..z]><[a..z 0..9]>**2») }
+    token tag-reference { <soup=.tag>|<soup=.this>|<soup=.from> }
+
     # In lieu of permutation parsing, expectation methods can be composed to validate parses. Expectations deal with
     # three grammar elements:
     #
@@ -767,6 +775,7 @@ our proto parse(
     Mu :$actions = Mu,              #= grammar actions
     Styles:D :$styles = Styles.new, #= styling, for source reports purposes
     Str :$source,                   #= name or shorthand designating the input
+    :%universe,                     #= hash of results, from successive parses higher up the topological order
     *%,
     --> Match:D)
 { * }
@@ -778,6 +787,7 @@ multi parse(
     Mu :$actions = Mu,     #= grammar actions
     Styles:D :$styles,     #= styling, for source reports purposes
     Str :$source = input,  #= name or shorthand designating the input
+    :%universe,            #= hash of results, from successive parses higher up the topological order
     --> Match:D)
 {
     CATCH {
@@ -788,7 +798,7 @@ multi parse(
     }
     # seemingly required to stringify the top-level match or something to do with its attributes, don’t ask me
     $gram = $gram // $gram.new;
-    my $args = \(:$styles, :$source);
+    my $args = \(:$styles, :$source, :%universe);
     $gram.parse(input, :$actions, :$args) // $gram.fatal-error("rejected by grammar {$gram.^name}", :$styles, :$source)
 }
 
@@ -800,9 +810,10 @@ multi parse(
     Mu :$actions = Mu,            #= grammar actions
     Styles:D :$styles,            #= styling, for source reports purposes
     Str :$source = path.path,     #= name or shorthand designating the input
+    :%universe,                   #= hash of results, from successive parses higher up the topological order
     --> Match:D
 ) {
-    parse(gram, path.slurp(:$enc), :$actions, :$styles, :$source)
+    parse(gram, path.slurp(:$enc), :$actions, :$styles, :$source, :%universe)
 }
 
 #| Actions to turn the L<Match> produced by a L<PDS::Grammar> into into a tree-like array of items and pairs. See

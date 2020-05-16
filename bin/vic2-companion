@@ -182,7 +182,7 @@ sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
 }
 
 constant victoria2-grammars = (
-    # not ready yet
+    PDS::Victoria2::CasusBelli,
     PDS::Victoria2::Events,
 );
 
@@ -203,8 +203,8 @@ sub note-warning(Str:D \msg --> Bool:D)
         my \styled-closer       = $styles.alert("└ ");
 
         note qq:to«END».chomp
-        {styled-header} {lines[0]}{lines[1..^(*-1)].map("\n" ~ styled-continuation ~ *).join}
-        {styled-closer}{lines[(*-1)..*]}
+        {styled-header} {lines[0]}{lines[1 ..^ * - 1].map("\n" ~ styled-continuation ~ *).join}
+        {styled-closer}{lines[* - 1]}
         END
     }
 }
@@ -214,22 +214,31 @@ package status { enum status «success expected-failure failure unexpected-succe
 class ProcessResult {
     has $.path;
     has $.result;
-    has $.remarks;
 
-    method status(--> status::status:D) {
-        given is-whitelisted($.path, whitelist), ($.result, $.remarks.map(*.kind).cache) {
-            when !*, (Failure.none, Any) & (Any, { .none eqv PDS::Remark::Error }) { status::success }
-            when ?*, (Failure,      Any) | (Any, {  .any eqv PDS::Remark::Error }) { status::expected-failure }
-            when !*, (Failure,      Any) | (Any, {  .any eqv PDS::Remark::Error }) { status::failure }
-            when ?*, (Failure.none, Any) & (Any, { .none eqv PDS::Remark::Error }) { status::unexpected-success }
+    method remarks(::?CLASS:D: --> List:D) {
+        $.result andthen .<REMARKS>.unique.List
+    }
+
+    method status(::?CLASS:D: --> status::status:D) {
+        sub good($_ --> Bool:D) {
+            ? (
+                .so && { PDS::Remark::Error !∈ .<REMARKS>.map(*.kind).Set }
+            )
+        }
+
+        given is-whitelisted($.path, whitelist), $.result {
+            when :not, ?*.&good { status::success }
+            when :so,  !*.&good { status::expected-failure }
+            when :not, !*.&good { status::failure }
+            when :so,  ?*.&good { status::unexpected-success }
         }
     }
 }
 
-sub process-file(IO:D \file --> ProcessResult:D)
+sub pair-grammar(IO:D \file --> Pair:D)
 {
     my \dir = file.SPEC.catdir(path-components(file)[^(*-1)]).IO;
-    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.List) });
+    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.List) && .what.ACCEPTS(file.basename) });
     if candidates.elems > 1 {
         note-warning qq:to«END».chomp
         File {$styles.quote-path(file.path)} is ambiguous because its path matches the following:
@@ -238,15 +247,43 @@ sub process-file(IO:D \file --> ProcessResult:D)
         Possible fix: point $styles.attention($*PROGRAM-NAME) to a higher base path to help disambiguate.
         END
     }
-    my \grammar = candidates ?? candidates[0] !! victoria2-fallback;
 
-    my \parsed = PDS::parse(grammar, file, :$styles);
+    (file) => candidates ?? candidates[0] !! victoria2-fallback
+}
+
+sub process-file((:key($file), :value($grammar)), :%universe --> ProcessResult:D)
+{
+    my \parsed = PDS::parse($grammar, $file, :$styles, :%universe);
 
     # condense entire match to concrete result in case of success
     # this avoids carrying around file contents inside (sometimes huge) ast pieces
-    my $result = (parsed andthen .Bool orelse parsed);
-    my $remarks = (parsed andthen .made<REMARKS>.unique).List;
-    ProcessResult.new(path => file, :$result, :$remarks)
+    my $result  = do parsed andthen .made orelse parsed;
+    ProcessResult.new(path => $file, :$result)
+}
+
+sub process-levels(@files --> Map:D)
+{
+    my %universe;
+    my @incomplete-universe;
+    my @results;
+
+    use PDS::unsorted;
+
+    for @files.map(&pair-grammar).classify({ .value.?topo-level // Inf }).sort(*.key).map(*.value) -> @level {
+        my \level = @level
+            .race(degree => $jobs, :1batch)
+            .map(&process-file.assuming(:%universe))
+            .List;
+        %universe .= &extend-associative(|[[&merge-associatives]] %(), |level.map({ .result<RESULT>:v }).grep(Associative));
+        @incomplete-universe.append(level.map({ .result<INCOMPLETE-UNIVERSE>:v.Slip }));
+        @results.append(level);
+    }
+
+    for @incomplete-universe.unique -> \universe-error {
+        note-warning(universe-error)
+    }
+
+    @results.classify(*.status)
 }
 
 # get started
@@ -270,11 +307,7 @@ if @files.elems == 0 {
 # do the work
 
 my \heartbeats = do with $heartbeat { Supply.interval($_, $_).map({ now.DateTime.local.hh-mm-ss }) };
-my \processing = start
-    @files
-    .race(degree => $jobs, :1batch)
-    .map(&process-file)
-    .classify(*.status);
+my \processing = start process-levels(@files);
 
 my \start = now;
 my \results = await supply {
@@ -290,8 +323,7 @@ my \results = await supply {
         done
     }
 }
-my \stop = now;
-my \duration = stop - start;
+my \duration = (my \stop = now) - start;
 
 # report results
 

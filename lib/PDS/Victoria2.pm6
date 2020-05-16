@@ -27,13 +27,33 @@ constant Remark = PDS::Remark;
 
 #| Base for common items for Victoria 2 grammars.
 our grammar Base is PDS::Unstructured {
+    ## Grammar organisation (to be overriden)
+
+    my subset PathPrefix of Any where Str|List;
+
+    #| For the purpose of parallel processing, grammars expose their topological level. This is with respect to the
+    #| tree structure of game or mod files. Parsing should start with grammars at level zero with an empty universe,
+    #| collecting the respective C<.made<RESULT>> results into an expanded universe. This will be fed into the parsing
+    #| at level one, and so on.
+    proto method topo-level(::?CLASS:D: --> Num:D)        { … }
+    #| Path suffix for the directory inside the game or mod structure containing the files of interest to the grammar.
+    proto method      where(::?CLASS:D: --> PathPrefix:D) { … }
+    #| Smartmatch pattern for base names of interest to the grammar.
+    proto method       what(::?CLASS:D: --> Any:D)        { … }
+    #| Brief human-friendly description of what the grammar parses.
+    proto method      descr(::?CLASS:D: --> Str:D)        { … }
+
+    ## Tokens
+
+    token casus-belli { <soup=.text> }
+
     ## Triggers
 
     rule trigger {
         | $<soup=ai>=(<key=.kw('ai')> '=' <value=.yes-or-no>)
 
         # catch-all
-        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=.trigger-block>])
+        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=trigger-block>])
     }
 
     rule trigger-block {
@@ -42,37 +62,39 @@ our grammar Base is PDS::Unstructured {
 
     ## Effects
 
-    rule effect {
+    rule effect(::?CLASS:D \group) {
         | <soup=add_country_modifier>
         | <soup=add_province_modifier>
         | <soup=country-event-effect>
         | <soup=province-event-effect>
+        | <soup=casus-belli-effect>
+        | <soup=war-effect(group)>
 
         # catch-all
-        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=.effect-block>])
+        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=effect-block(group)>])
     }
 
-    rule effect-block {
-        '{' ~ '}' <entries=.effect>*
+    rule effect-block(::?CLASS $group?) {
+        '{' ~ '}' [ {} <entries=effects=.effect($group // $/)> ]*
     }
 
     rule add_country_modifier  {
         <key=.kw("add_country_modifier")> '=' <value=.name-duration-block>
-        {} <validate-modifier>
+        {} <.validate-modifier>
     }
     rule add_province_modifier {
         <key=.kw("add_province_modifier")> '=' <value=.name-duration-block>
-        {} <validate-modifier>
+        {} <.validate-modifier>
     }
 
     rule name-duration-block {
         '{' ~ '}' [
             [
-                @<entries=name>=(<key=.kw('name')>         '=' <value=.text>)
-                @<entries=duration>=(<key=.kw('duration')> '=' <value=.number>)
+                @<entries=name>     = (<key=.kw('name')>     '=' <value=.text>)
+                @<entries=duration> = (<key=.kw('duration')> '=' <value=.number>)
             ] | [
-                @<entries=duration>=(<key=.kw('duration')> '=' <value=.number>)
-                @<entries=name>=(<key=.kw('name')>         '=' <value=.text>)
+                @<entries=duration> = (<key=.kw('duration')> '=' <value=.number>)
+                @<entries=name>     = (<key=.kw('name')>     '=' <value=.text>)
             ]
         ]
     }
@@ -90,13 +112,165 @@ our grammar Base is PDS::Unstructured {
         <soup=.number>
         | '{' ~ '}' [
             [
-                @<entries=id>=(<key=.kw('id')> '=' <value=.number>)
-                @<entries=days>=(<key=.kw('days')> '=' <value=.number>)
+                @<entries=id>   = (<key=.kw('id')>   '=' <value=.number>)
+                @<entries=days> = (<key=.kw('days')> '=' <value=.number>)
             ] | [
-                @<entries=days>=(<key=.kw('days')> '=' <value=.number>)
-                @<entries=id>=(<key=.kw('id')> '=' <value=.number>)
+                @<entries=days> = (<key=.kw('days')> '=' <value=.number>)
+                @<entries=id>   = (<key=.kw('id')>   '=' <value=.number>)
             ]
         ]
+    }
+
+    rule casus-belli-effect {
+        <key=.kw('casus_belli')> '=' <value=.casus-belli-block>
+        {} <.validate-casus-belli>
+    }
+
+    rule casus-belli-block {
+        '{' ~ '}' [
+            | @<entries=target> = (<key=.kw('target')> '=' <value=.tag-reference>)
+            | @<entries=type>   = (<key=.kw('type')>   '=' <value=.casus-belli>)
+            | @<entries=months> = (<key=.kw('months')> '=' <value=.number>)
+        ]*
+    }
+
+    method validate-casus-belli {
+        my (\casus-belli, \casus-belli-block) = self<key value>;
+
+        given casus-belli-block {
+            .expect-one(casus-belli, "target");
+            .expect-one(casus-belli, "type");
+            .expect-one(casus-belli, "months");
+        }
+
+        $.ok
+    }
+
+    rule war-effect(::?CLASS:D \group) {
+        <key=.kw('war')> '=' [
+            | <value=war-effect-block>
+            | <value=war-tag-reference=.tag-reference>
+        ]
+        {} <.validate-war(group)>
+    }
+
+    rule war-effect-block {
+        '{' ~ '}' [
+            | @<entries=target>                  = (<key=.kw('target')>        '=' <value=.tag-reference>)
+            | @<entries=wargoals=attacker-goals> = (<key=.kw('attacker_goal')> '=' <value=.wargoal-block>)
+            | @<entries=wargoals=defender-goals> = (<key=.kw('defender_goal')> '=' <value=.wargoal-block>)
+            | @<entries=call_ally>               = (<key=.kw('call_ally')>     '=' <value=.yes-or-no>)
+        ]*
+    }
+
+    rule wargoal-block {
+        '{' ~ '}' [
+            | @<entries=casus_belli>       = (<key=.kw('casus_belli')>       '=' <value=.casus-belli>)
+            | @<entries=state_province_id> = (<key=.kw('state_province_id')> '=' <value=.integer>)
+            | @<entries=country>           = (<key=.kw('country')>           '=' <value=.tag-reference>)
+        ]*
+    }
+
+    method validate-war(::?CLASS:D \group) {
+        my (\war, \war-block) = self<key war-effect-block>;
+
+        with war-block {
+            # TODO: hardcoding of the CB
+            if any(.<attacker-goals>)<value><casus_belli>[0]<value>.&kw eq "call_allies_cb".fc {
+                my @extra-locs =
+                    .<attacker-goals>
+                    .map({ .<value><casus_belli>[0]<value> })
+                    .grep({ .&kw eq "call_allies_cb".fc })
+                    .sort(*.pos);
+
+                my $element = "Call to Arms $*STYLES.code(war.Str)";
+                .prefer-none(war, "target", :@extra-locs, too-many => Remark::Convention => -> **@ { qq:to«END» });
+                target is unnecessary when starting a $element
+                END
+
+                .prefer-yes((.<call_ally><key> // war), "call_ally", Remark::Convention, :@extra-locs, :$element);
+            } else {
+                if my \target = .expect-one(war, "target") {
+                    if .<wargoals>.elems == 0 && .<call_ally>[0].&no {
+                        my \before    = $*STYLES.code(self.preceding);
+                        my \tag-form  = $*STYLES.code-highlight("war = $*STYLES.code-focus(target<value>.Str)");
+                        my \call-ally = $*STYLES.code-quote("call_ally = $*STYLES.code-focus("yes")");
+                        self.opinion(qq:to«END».chomp);
+                        This CB-less war in block form can use the tag form instead:
+                        {"{before}{tag-form}".indent(4)}
+                        (Did you mean for this war to call allies? If so, use: {call-ally})
+                        END
+                    }
+                }
+            }
+
+            .prefer-at-most-one(war, "call_ally");
+
+            if %*UNIVERSE<casus-belli>:exists {
+                my \casus-belli = %*UNIVERSE<casus-belli>.Map;
+
+                # War makes the attacker (but not the defender) pay the infamy costs of their CBs. Conventionally, modders
+                # should.
+                my %nearby-casus-belli = group<effects>.map({
+                    .<casus-belli-effect><value><type>[0]<value>:v
+                }).flat.map(&kw).Set;
+
+                for .<wargoals> {
+                    my \kind = .<key>.&kw;
+                    with .<value>.prefer-one(.<key>, "casus_belli") {
+                        my \cb = .<value>.&kw;
+                        if cb !∈ casus-belli.keys.Set {
+                            .<value>.error(qq:to«END».chomp)
+                            Casus belli not recognised
+                            END
+                        } else {
+                            my \cb-info = casus-belli{cb};
+
+                            unless
+                                # defender doesn’t pay infamy cost
+                                kind eq "defender_goal".fc
+                                # CB is always active, never fabricated
+                                || cb-info<always>
+                                # CB was granted prior
+                                || .<value>.&kw ∈ %nearby-casus-belli
+                                # infamy cost scaled down to 0
+                                || (do cb-info<badboy_factor> andthen $_ == 0)
+                                # Check not performed: total base cost of all peace options is null. Since those base costs
+                                # are (likely) hardcoded and too annoying to work out, we instead assume that all fabricated
+                                # CBs have an infamy cost. This should be reasonable.
+                            {
+                                .quirk(qq:to«END».chomp);
+                                $*STYLES.header("CB was not granted to the attacker prior to starting war")
+
+                                The game makes the attacker of the war (but not its defender) pay the infamy costs of all CBs
+                                that are not currently on hand. This is hidden from the player.
+
+                                Consider separately granting the CB to the attacker just prior, together with an explicit infamy cost:
+                                {
+                                    $*STYLES.code(qq:to«END»).chomp.indent(4)
+                                    badboy = $*STYLES.code-focus("3")$*STYLES.code(" # pick any amount of your choice that feels fair,")
+                                               # or remove if the war should cost no infamy
+
+                                    casus_belli = \{
+                                        target = {war-block<target>[0]<value> andthen .Str orelse $*STYLES.code-highlight("<war lacks a target>")}
+                                        type = $*STYLES.code-focus(.<value>.Str)
+                                        months = 24
+                                    \}
+                                    END
+                                }
+                                This is fair to the player when done this way. In-game tooltips will properly display the infamy
+                                cost (if any) of the war.
+                                END
+                            }
+                        }
+                    }
+                    .<value>.prefer-at-most-one(.<key>, "state_province_id");
+                    .<value>.prefer-at-most-one(.<key>, "country");
+                }
+            }
+        }
+
+        $.ok
     }
 }
 
@@ -108,58 +282,240 @@ our sub event-effect-id(\ast where Any:U|Match --> Int) is export(:ast)
     andthen .Int orelse Int
 }
 
+#| Parse a C<cb_types.txt> file.
+our grammar CasusBelli is Base {
+    method topo-level { 0 }
+    method where      { <common> }
+    method what       { "cb_types.txt" }
+    method descr      { "common/cb_types.txt file" }
+
+    rule TOP(Styles:D :$styles!, Str :$source, :%universe = %()) {
+        :my $*STYLES   = $styles;
+        :my $*SOURCE   = $source;
+        :my %*UNIVERSE = %universe;
+        :my @*REMARKS;
+
+        ^ [
+            | <peace_order>
+            | <entries=casus-belli-definitions=.casus-belli-definition>
+        ]* $
+
+        {
+            remake(
+                $/,
+                REMARKS => @*REMARKS,
+                RESULT  => casus-belli => @<entries>.map({
+                    .<key>.&kw => do %(
+                        do given .<value> {
+                            badboy_factor => .<badboy_factor>[0].&{ .<value>.?Rat // 0 },
+                            (:always if .<always>[0].&yes),
+                        }
+                    )
+                }).List,
+            )
+        } <.validate-casus-belli-file>
+    }
+
+    rule peace_order {
+        <key=.kw('peace_order')> '=' $<value>=('{' ~ '}' [ <entries=.casus-belli> ]*)
+    }
+
+    rule casus-belli-definition {
+        <key=.text> '=' <value=.casus-belli-block>
+        {} <.validate-casus-belli>
+    }
+
+    rule casus-belli-block {
+        '{' ~ '}' [
+            | @<entries=sprite_index>         = (<key=.kw('sprite_index')>         '=' <value=.number>)
+            | @<entries=is_triggered_only>    = (<key=.kw('is_triggered_only')>    '=' <value=.yes-or-no>)
+            | @<entries=months>               = (<key=.kw('months')>               '=' <value=.number>)
+            | @<entries=crisis>               = (<key=.kw('crisis')>               '=' <value=.yes-or-no>)
+            | @<entries=construction_speed>   = (<key=.kw('construction_speed')>   '=' <value=.number>)
+            | @<entries=constructing_cb>      = (<key=.kw('constructing_cb')>      '=' <value=.yes-or-no>)
+            | @<entries=great_war_obligatory> = (<key=.kw('great_war_obligatory')> '=' <value=.yes-or-no>)
+
+            | @<entries=badboy_factor>     = (<key=.kw('badboy_factor')>     '=' <value=.number>)
+            | @<entries=prestige_factor>   = (<key=.kw('prestige_factor')>   '=' <value=.number>)
+            | @<entries=peace_cost_factor> = (<key=.kw('peace_cost_factor')> '=' <value=.number>)
+            | @<entries=penalty_factor>    = (<key=.kw('penalty_factor')>    '=' <value=.number>)
+            | @<entries=always>            = (<key=.kw('always')>            '=' <value=.yes-or-no>)
+            | @<entries=is_civil_war>      = (<key=.kw('is_civil_war')>      '=' <value=.yes-or-no>)
+
+            | @<entries=break_truce_prestige_factor>  = (<key=.kw('break_truce_prestige_factor')>  '=' <value=.number>)
+            | @<entries=break_truce_infamy_factor>    = (<key=.kw('break_truce_infamy_factor')>    '=' <value=.number>)
+            | @<entries=break_truce_militancy_factor> = (<key=.kw('break_truce_militancy_factor')> '=' <value=.number>)
+            | @<entries=truce_months>                 = (<key=.kw('truce_months')>                 '=' <value=.number>)
+
+            | @<entries=good_relation_prestige_factor>  = (<key=.kw('good_relation_prestige_factor')>  '=' <value=.number>)
+            | @<entries=good_relation_infamy_factor>    = (<key=.kw('good_relation_infamy_factor')>    '=' <value=.number>)
+            | @<entries=good_relation_militancy_factor> = (<key=.kw('good_relation_militancy_factor')> '=' <value=.number>)
+
+            | @<entries=can_use>                  = (<key=.kw('can_use')>                  '=' <value=.trigger-block>)
+            | @<entries=is_valid>                 = (<key=.kw('is_valid')>                 '=' <value=.trigger-block>)
+            | @<entries=allowed_countries>        = (<key=.kw('allowed_countries')>        '=' <value=.trigger-block>)
+            | @<entries=allowed_states>           = (<key=.kw('allowed_states')>           '=' <value=.trigger-block>)
+            | @<entries=allowed_substate_regions> = (<key=.kw('allowed_substate_regions')> '=' <value=.trigger-block>)
+            | @<entries=allowed_states_in_crisis> = (<key=.kw('allowed_states_in_crisis')> '=' <value=.trigger-block>)
+
+            | @<entries=options=all_allowed_states>              = (<key=.kw('all_allowed_states')>              '=' <value=.yes-or-no>)
+            | @<entries=options=po_status_quo>                   = (<key=.kw('po_status_quo')>                   '=' <value=.yes-or-no>)
+            | @<entries=options=po_annex>                        = (<key=.kw('po_annex')>                        '=' <value=.yes-or-no>)
+            | @<entries=options=po_demand_state>                 = (<key=.kw('po_demand_state')>                 '=' <value=.yes-or-no>)
+            | @<entries=options=po_transfer_provinces>           = (<key=.kw('po_transfer_provinces')>           '=' <value=.yes-or-no>)
+            | @<entries=options=po_disarmament>                  = (<key=.kw('po_disarmament')>                  '=' <value=.yes-or-no>)
+            | @<entries=options=po_reparations>                  = (<key=.kw('po_reparations')>                  '=' <value=.yes-or-no>)
+            | @<entries=options=po_remove_prestige>              = (<key=.kw('po_remove_prestige')>              '=' <value=.yes-or-no>)
+            | @<entries=options=po_remove_cores>                 = (<key=.kw('po_remove_cores')>                 '=' <value=.yes-or-no>)
+            | @<entries=options=po_gunboat>                      = (<key=.kw('po_gunboat')>                      '=' <value=.yes-or-no>)
+            | @<entries=options=po_colony>                       = (<key=.kw('po_colony')>                       '=' <value=.yes-or-no>)
+            | @<entries=options=po_add_to_sphere>                = (<key=.kw('po_add_to_sphere')>                '=' <value=.yes-or-no>)
+            | @<entries=options=po_clear_union_sphere>           = (<key=.kw('po_clear_union_sphere')>           '=' <value=.yes-or-no>)
+            | @<entries=options=po_make_puppet>                  = (<key=.kw('po_make_puppet')>                  '=' <value=.yes-or-no>)
+            | @<entries=options=po_release_puppet>               = (<key=.kw('po_release_puppet')>               '=' <value=.yes-or-no>)
+            | @<entries=options=po_install_communist_gov_type>   = (<key=.kw('po_install_communist_gov_type')>   '=' <value=.yes-or-no>)
+            | @<entries=options=po_uninstall_communist_gov_type> = (<key=.kw('po_uninstall_communist_gov_type')> '=' <value=.yes-or-no>)
+            | @<entries=options=po_destroy_forts>                = (<key=.kw('po_destroy_forts')>                '=' <value=.yes-or-no>)
+            | @<entries=options=po_destroy_naval_bases>          = (<key=.kw('po_destroy_naval_bases')>          '=' <value=.yes-or-no>)
+
+            | @<entries=tws_battle_factor> = (<key=.kw('tws_battle_factor')> '=' <value=.number>)
+
+            | @<entries=war_name>          = (<key=.kw('war_name')>          '=' <value=.text>)
+
+            | @<entries=on_add>            = (<key=.kw('on_add')>            '=' <value=.effect-block>)
+            | @<entries=on_po_accepted>    = (<key=.kw('on_po_accepted')>    '=' <value=.effect-block>)
+        ]*
+    }
+
+    method validate-casus-belli {
+        my (\cb, \cb-block) = self<key value>;
+
+        given cb-block {
+            .prefer-one(cb, "sprite_index", kinds => 0 => Remark::Missing-Info);
+
+            for <
+                months
+                badboy_factor prestige_factor peace_cost_factor penalty_factor
+                break_truce_prestige_factor break_truce_infamy_factor break_truce_militancy_factor truce_months
+            > -> \entry {
+                .prefer-one(cb, entry)
+            }
+
+            # N.b. hardcoding is justified because these CBs are hardcoded in the game’s machinery
+            if cb.&kw ∈ ("status_quo".fc, "gunboat".fc).Set {
+                for <
+                    good_relation_prestige_factor good_relation_infamy_factor good_relation_militancy_factor
+                > -> \entry {
+                    .prefer-at-most-one(cb, entry)
+                }
+            } else {
+                for <
+                    good_relation_prestige_factor good_relation_infamy_factor good_relation_militancy_factor
+                > -> \entry {
+                    .prefer-one(cb, entry)
+                }
+            }
+
+            for <
+                is_triggered_only crisis construction_speed constructing_cb great_war_obligatory
+                always is_civil_war
+            > -> \entry {
+                .prefer-at-most-one(cb, entry)
+            }
+
+            # NYI: trigger validation
+            # NYI: peace outcome validation
+
+            .prefer-one(cb, "war_name", kinds => 0 => Remark::Missing-Localisation);
+            .prefer-one(cb, "on_add", missing => Remark::Convention => qq:to«END».chomp);
+            Adding a CB should cost jingoism support in the country.
+            If you intend to make an exception to this rule, consider still leaving an $*STYLES.code("on_add") block
+            with a comment inside to document that fact. This will make it clear it’s a deliberate design and not an
+            oversight.
+            END
+            .prefer-at-most-one(cb, "on_po_accepted");
+        }
+
+        $.ok
+    }
+
+    method validate-casus-belli-file {
+        $.ok
+    }
+}
+
 #| Parse an event file.
 our grammar Events is Base {
-    method where { <events> };
-    method descr { "event files" };
+    method topo-level { 1 }
+    method where      { <events> }
+    method what       { Any }
+    method descr      { "event files" }
 
-    rule TOP(Styles:D :$styles!, Str :$source) {
-        :my $*STYLES = $styles;
-        :my $*SOURCE = $source;
+    rule TOP(Styles:D :$styles!, Str :$source, :%universe = %()) {
+        :my $*STYLES   = $styles;
+        :my $*SOURCE   = $source;
+        :my %*UNIVERSE = %universe;
         :my @*REMARKS;
+
         ^ [
             | @<entries=country-events>=<.country-event>
             | @<entries=province-events>=<.province-event>
         ]* $
-        { remake($/, REMARKS => @*REMARKS) }
+
+        {
+            my \incomplete-universe = do unless %universe<casus-belli>:exists {
+                qq:to«END».chomp,
+                While analysing $.descr():
+                some effects will not be fully validated unless $*STYLES.quote-path("common/cb_types.txt") is analysed.
+                END
+            }
+
+            remake(
+                $/,
+                REMARKS => @*REMARKS,
+                RESULT  => event-ids => %(
+                    $source => @<entries>.map(&event-id).grep(*.defined).List
+                ),
+                INCOMPLETE-UNIVERSE => incomplete-universe,
+            )
+        }
     }
 
     rule country-event  {
         <key=.kw('country_event')>  '=' <value=.country-event-block>
-        {} <validate-event>
+        {} <.validate-event>
     }
     rule province-event {
         <key=.kw('province_event')> '=' <value=.province-event-block>
-        {} <validate-event>
+        {} <.validate-event>
     }
 
     rule country-event-block {
-        :my $id = Int;
         '{' ~ '}' [
-            | @<entries>=<id> { with @<id>[0]<value>.Int { $id = $_ } }
+            | <entries=id>
 
-            | @<entries>=<title>
-            | @<entries>=<desc>
-            | @<entries>=<picture>
-            | @<entries>=<major>
-            | @<entries>=<election>
-            | @<entries>=<issue_group>
+            | <entries=title>
+            | <entries=desc>
+            | <entries=picture>
+            | <entries=major>
+            | <entries=election>
+            | <entries=issue_group>
 
-            | @<entries>=<news>
-            | @<entries>=<news_title>
-            | @<entries>=<news_desc_long>
-            | @<entries>=<news_desc_medium>
-            | @<entries>=<news_desc_short>
+            | <entries=news>
+            | <entries=news_title>
+            | <entries=news_desc_long>
+            | <entries=news_desc_medium>
+            | <entries=news_desc_short>
 
-            | @<entries>=<is_triggered_only>
-            | @<entries>=<fire_only_once>
-            | @<entries>=<allow_multiple_instances>
+            | <entries=is_triggered_only>
+            | <entries=fire_only_once>
+            | <entries=allow_multiple_instances>
 
-            | @<entries>=<event_trigger>
-            | @<entries>=<mean_time_to_happen>
+            | <entries=event_trigger>
+            | <entries=mean_time_to_happen>
 
-            | @<entries>=<immediate>
-            | @<entries=options>=<.option>
+            | <entries=immediate>
+            | <entries=options=.option>
         ]*
     }
 
@@ -195,7 +551,7 @@ our grammar Events is Base {
             | @<entries=ai_chance>=(<key=.kw('ai_chance')> '=' <value=.trigger-block>)
 
             # catch-all
-            | <entries=.effect>
+            | {} <entries=effects=.effect($/)>
         ]*
     }
 
@@ -228,7 +584,10 @@ our grammar Events is Base {
 
                 when &no, !* {
                     # AI-only events are allowed not to have a picture
-                    unless (event-block<event_trigger>[0]<value><ai>[0].&yes) {
+                    unless
+                        (event-block<event_trigger>[0]<value><ai>[0].&yes)
+                        # province events don’t have pictures
+                        || event.&kw eq "province_event".fc {
                         event.missing-info(qq:to«END».chomp);
                         $element is missing a picture
                         END
