@@ -21,28 +21,74 @@ unit class PDS::Styles is export;
 
 our enum When « never always auto »;
 
+# stylistic palette
+
+constant palette-wheel = (
+    ## Primary accents
+    # top to bottom: in rough order of R–Y–G–C–B–M color wheel
+    # across: tint/tone/shade
+    #
+    # Of the lot, yellow-accent0 & red-accent0 (in that order) really strike out. Despite looking
+    # pastelish, they still come off more saturated than the rest. This is fine as long as they are
+    # semantically used for attention grabbing.
+    #
+    # The rest look pastel enough to come off as soothing.
+    #
+    # This is all designed for use on dark backgrounds. Light backgrounds have not been considered.
+
+    # Reds
+    red-accent0 => "208,51,41", # "red",
+
+    # Yellows
+    yellow-accent0 => #`(pale yellow) "255,238,64",
+
+    # Blues and greens
+    bluegreen-accent0 => #`(blue–green, trending greenish) "77,145,132",
+    bluegreen-accent1 => #`(blue–green, trending deep blue) "8,110,144",
+        bluegreen-shaded-accent1 => #`(pale blue shade) "141,158,198",
+
+    # Magentas
+    magenta-accent0 => #`(violet–pink) "255,136,220",
+
+    ## Secondaries
+
+    grey0 => "96,96,96",
+);
+
+constant palette = palette-wheel.Hash;
+
+# semantic palettes
+
+=head2 Inline styles
+
 #| To make things stand out.
 constant highlight-styles   = "underline";
 #| To put things into full focus.
 constant focus-styles       = "underline inverse";
 #| For PDS script.
-constant code-styles        = #`(bold, blue–green shade) "bold 141,158,198";
+constant code-styles        = "bold {palette<bluegreen-shaded-accent1>}";
 #| For mild emphasis. “Bring to attention.”
-constant attention-styles   = #`(pale yellow) "255,238,64";
+constant attention-styles   = palette<yellow-accent0>;
 #| For stronger emphasis.
-constant important-styles   = #`(violet–pink) "255,136,220";
+constant important-styles   = palette<magenta-accent0>;
 #| For strongest emphasis.
-constant alert-styles       = "bold red";
+constant alert-styles       = palette<red-accent0>;
 #| For de-emphasis.
-constant unimportant-styles = #`(grey) "96,96,96";
+constant unimportant-styles = palette<grey0>;
 #| For a path.
-constant path-styles        = "blue";
+constant path-styles        = palette<bluegreen-accent1>;
+
+=head2 Element styles
+
+constant header-styles = "bold {palette<bluegreen-accent0>}";
 
 #| Brackets, according to content, according to fanciness, opener+closer.
 constant brackets = %(
     # content => (fancy,    plain)
+    none      => (('', ''), ('', '')),
+    header    => (<❯ ❮>,    <❯ ❮>),
     text      => (<‘ ’>,    <‘ ’>),
-    path      => ((''; ''), <‘ ’>),
+    path      => (('', ''), <‘ ’>),
     code      => (<｢ ｣>,    <｢ ｣>),
 );
 
@@ -58,18 +104,27 @@ method new(::?CLASS:U: When:D \color = auto --> ::?CLASS:D) {
     my (&styler, &quoter) = do if fancy {
         my &colored = ::('Terminal::ANSIColor::EXPORT::DEFAULT::&colored');
         (
-            sub fancy(Str:D $_, Str:D \styles --> Str:D) {
+            sub fancy(
+                Str:D $_,
+                Str:D \styles,
+                --> Str:D
+            ) {
                 (
                     .lines.map({ colored($_, styles) }).join("\n"),
                     .ends-with("\n") ?? "\n" !! Empty,
                 ).join
             },
-            sub colour-quote(Str:D $_, Str:D \styles, :$brackets = brackets<text> --> Str:D) {
+
+            sub colour-quote(
+                Str:D $_, Str:D \styles,
+                :$brackets = ((unimportant-styles) => brackets<text>),
+                --> Str:D
+            ) {
                 (
-                    fancy($brackets[0][0], unimportant-styles),
+                    fancy($brackets.value[0][0], $brackets.key),
                     .lines.map({ colored($_, styles) }).join("\n"),
                     .ends-with("\n") ?? "\n" !! Empty,
-                    fancy($brackets[0][1], unimportant-styles),
+                    fancy($brackets.value[0][1], $brackets.key),
                 ).join
             },
         )
@@ -77,8 +132,14 @@ method new(::?CLASS:U: When:D \color = auto --> ::?CLASS:D) {
         (
             sub plain(Str:D \text, Str:D $ --> Str:D)
             { text },
-            sub plain-quote(Str:D \text, Str:D $, :$brackets = brackets<text> --> Str:D)
-            { $brackets[1][0] ~ text ~ $brackets[1][1] },
+
+            sub plain-quote(
+                Str:D \text, Str:D $,
+                :$brackets = ((unimportant-styles) => brackets<text>),
+                --> Str:D
+            ) {
+                $brackets.value[1][0] ~ text ~ $brackets.value[1][1]
+            },
         )
     };
 
@@ -102,6 +163,27 @@ method perl(::?CLASS: --> Str:D) {
     ).join
 }
 
+method palette-demo(::?CLASS:D: --> Str:D) {
+    my \first-column = palette-wheel.map(*.key.chars).max;
+    qq:to«END».chomp
+    {"colour".fmt("%{first-column}s")}: normal\t\t\t\tbold\t\t\t\titalic
+    {
+        palette-wheel.map(-> \color {
+            &.styler.(qq:to«END».chomp, color.value)
+            {color.key.fmt("%{first-column}s")}: {
+                (
+                    &.styler.(
+                        "the quick brown fox",
+                        "{color.value} $_"
+                    ) for "", "bold", "italic"
+                ).join(" ")
+            }
+            END
+        }).join("\n")
+    }
+    END
+}
+
 method style(::?CLASS:D: Str:D \text, Str:D \styles --> Str:D) {
     &.styler.(text, styles)
 }
@@ -110,8 +192,13 @@ method quote(::?CLASS:D: Str:D \text, Str:D \styles --> Str:D) {
     &.quoter.(text, styles)
 }
 
-method quote-path(::?CLASS:D: Str:D \text, Str:D $extra-styles = "" --> Str:D) {
-    &.quoter.(text, (path-styles, $extra-styles).join(" "), brackets => brackets<path>)
+method quote-path(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<path>),
+    --> Str:D
+) {
+    &.quoter.(text, (path-styles, $extra-styles).join(" "), :$brackets)
 }
 
 method ellipsis(::?CLASS:D: Str:D :$extra-styles = "" --> Str:D) {
@@ -122,8 +209,13 @@ method code(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
     &.styler.(text, (code-styles, $extra-styles).join(" "))
 }
 
-method code-quote(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
-    &.quoter.(text, (code-styles, $extra-styles).join(" "), brackets => brackets<code>)
+method code-quote(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<code>),
+    --> Str:D
+) {
+    &.quoter.(text, (code-styles, $extra-styles).join(" "), :$brackets)
 }
 
 method code-highlight(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
@@ -146,32 +238,61 @@ method attention(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
     &.styler.(text, (attention-styles, $extra-styles).join(" "))
 }
 
-method attention-quote(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
-    &.quoter.(text, (attention-styles, $extra-styles).join(" "))
+method attention-quote(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<text>),
+    --> Str:D
+) {
+    &.quoter.(text, (attention-styles, $extra-styles).join(" "), :$brackets)
 }
 
 method important(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
     &.styler.(text, (important-styles, $extra-styles).join(" "))
 }
 
-method important-quote(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
-    &.quoter.(text, (important-styles, $extra-styles).join(" "))
+method important-quote(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<text>),
+    --> Str:D
+) {
+    &.quoter.(text, (important-styles, $extra-styles).join(" "), :$brackets)
 }
 
 method alert(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
     &.styler.(text, (alert-styles, $extra-styles).join(" "))
 }
 
-method alert-quote(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
-    &.quoter.(text, (alert-styles, $extra-styles).join(" "))
+method alert-quote(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<text>),
+    --> Str:D
+) {
+    &.quoter.(text, (alert-styles, $extra-styles).join(" "), :$brackets)
 }
 
 method unimportant(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
     &.styler.(text, (unimportant-styles, $extra-styles).join(" "))
 }
 
-method unimportant-quote(::?CLASS:D: Str:D \text, Str:D :$extra-styles = "" --> Str:D) {
-    &.quoter.(text, (unimportant-styles, $extra-styles).join(" "))
+method unimportant-quote(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((unimportant-styles) => brackets<text>),
+    --> Str:D
+) {
+    &.quoter.(text, (unimportant-styles, $extra-styles).join(" "), :$brackets)
+}
+
+method header(
+    ::?CLASS:D: Str:D \text,
+    Str:D :$extra-styles = "",
+    Pair:D :$brackets = ((header-styles) => brackets<header>),
+    --> Str:D
+) {
+    &.quoter.(text, (header-styles, $extra-styles).join(" "), :$brackets)
 }
 
 role Stylish {

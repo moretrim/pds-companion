@@ -175,7 +175,7 @@ class Remark {
         when Quirk {
             %(
                 descr => qq:to«END».chomp,
-                $styles.important("Quirks") from the game that are usually undesirable to modders
+                $styles.important("Quirks") from the game that are usually undesirable
                 END
             ).Map
         }
@@ -260,6 +260,10 @@ role Remarking {
 
     method quirk(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
         $.remark(Remark::Kind::Quirk, $message, :@extra-locs)
+    }
+
+    method convention(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
+        $.remark(Remark::Kind::Convention, $message, :@extra-locs)
     }
 
     method missing-localisation(Str:D $message, #`(::?CLASS) :@extra-locs = ()) {
