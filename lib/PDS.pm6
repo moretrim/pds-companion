@@ -558,8 +558,8 @@ grammar Grammar does Contextualising does ErrorReporting does Remarking does Sca
         --> Bool:D
     ) {
         given $.prefer-one(anchor, target, :@extra-locs, :$element, :$entry, :$missing, :$too-many) {
-            when !.&explicit-yes {
-                .remark($unexpected-no.key, $unexpected-no.value.($element, $entry).chomp);
+            when !.<value>.&explicit-yes {
+                (.<key> // $_).remark($unexpected-no.key, $unexpected-no.value.($element, $entry).chomp);
                 False
             }
 

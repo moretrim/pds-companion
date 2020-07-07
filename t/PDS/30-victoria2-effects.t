@@ -273,24 +273,7 @@ subtest "conventions on Call to Arms wars", {
         }
         END
 
-        my \parsed = parse-ok(call-to-arms, "can we parse a Call to Arms war (case 1: call_ally = yes)");
-
-        cmp-ok(
-            parsed.made<REMARKS>.unique,
-            &PDS::eqv-remarks,
-            (
-                PDS::Remark.new(
-                    kind => PDS::Remark::Convention,
-                    report => PDS::Report.new(
-                        contexts => (
-                            13 => skip-initial-empty-lines(call-to-arms.lines[10 ..^ 16]).join("\n"),
-                        ),
-                        message => "call_ally entry of Call to Arms war set to no when yes was expected",
-                    ),
-                ),
-            ),
-            "convention on Call to Arms war (case 1: call_ally = yes)",
-        );
+        parse-ok(call-to-arms, "can we parse a Call to Arms war (case 1: call_ally = yes)");
     }
 
     {
@@ -318,16 +301,6 @@ subtest "conventions on Call to Arms wars", {
                             16 => skip-initial-empty-lines(call-to-arms.lines[13 ..^ 19]).join("\n"),
                         ),
                         message => "target is unnecessary when starting a Call to Arms war",
-                    ),
-                ),
-
-                PDS::Remark.new(
-                    kind => PDS::Remark::Convention,
-                    report => PDS::Report.new(
-                        contexts => (
-                            14 => skip-initial-empty-lines(call-to-arms.lines[11 ..^ 17]).join("\n"),
-                        ),
-                        message => "call_ally entry of Call to Arms war set to no when yes was expected",
                     ),
                 ),
             ),
