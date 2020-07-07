@@ -25,6 +25,52 @@ use PDS::Styles;
 
 constant Remark = PDS::Remark;
 
+module hardcoded {
+
+our constant peace-option-to-define = %(
+    po_annex                        => "INFAMY_ANNEX",
+    po_demand_state                 => "INFAMY_DEMAND_STATE",
+    po_add_to_sphere                => "INFAMY_ADD_TO_SPHERE",
+    po_disarmament                  => "INFAMY_DISARMAMENT",
+    po_reparations                  => "INFAMY_REPARATIONS",
+    po_destroy_forts                => "INFAMY_DESTROY_FORTS",
+    po_destroy_naval_bases          => "INFAMY_DESTROY_NAVAL_BASES",
+    po_transfer_provinces           => "INFAMY_TRANSFER_PROVINCES",
+    po_remove_prestige              => "INFAMY_PRESTIGE",
+    po_make_puppet                  => "INFAMY_MAKE_PUPPET",
+    # N.b. somewhat speculative
+    po_clear_union_sphere           => "INFAMY_CONCEDE",
+    po_release_puppet               => "INFAMY_RELEASE_PUPPET",
+    po_status_quo                   => "INFAMY_STATUS_QUO",
+    po_install_communist_gov_type   => "INFAMY_INSTALL_COMMUNIST_GOV_TYPE",
+    po_uninstall_communist_gov_type => "INFAMY_UNINSTALL_COMMUNIST_GOV_TYPE",
+    po_remove_cores                 => "INFAMY_REMOVE_CORES",
+    po_colony                       => "INFAMY_COLONY",
+);
+
+our constant infamy-costs = %(
+    # copied from HPM/HFM defines
+    INFAMY_ADD_TO_SPHERE                => 2,
+    INFAMY_RELEASE_PUPPET               => 0.5,
+    INFAMY_MAKE_PUPPET                  => 5,
+    INFAMY_DISARMAMENT                  => 5,
+    INFAMY_DESTROY_FORTS                => 2,
+    INFAMY_DESTROY_NAVAL_BASES          => 2,
+    INFAMY_REPARATIONS                  => 5,
+    INFAMY_TRANSFER_PROVINCES           => 5,
+    INFAMY_REMOVE_CORES                 => 0,
+    INFAMY_PRESTIGE                     => 2,
+    INFAMY_CONCEDE                      => 1,
+    INFAMY_STATUS_QUO                   => 0,
+    INFAMY_ANNEX                        => 10,
+    INFAMY_DEMAND_STATE                 => 5,
+    INFAMY_INSTALL_COMMUNIST_GOV_TYPE   => 5,
+    INFAMY_UNINSTALL_COMMUNIST_GOV_TYPE => 5,
+    INFAMY_COLONY                       => 0,
+);
+
+} # hardcoded
+
 #| Base for common items for Victoria 2 grammars.
 our grammar Base is PDS::Unstructured {
     ## Grammar organisation (to be overriden)
@@ -218,13 +264,31 @@ our grammar Base is PDS::Unstructured {
                 for .<wargoals> {
                     my \kind = .<key>.&kw;
                     with .<value>.prefer-one(.<key>, "casus_belli") {
-                        my \cb = .<value>.&kw;
-                        if cb !∈ casus-belli.keys.Set {
-                            .<value>.error(qq:to«END».chomp)
+                        my \cb = .<value>;
+                        if cb.&kw !∈ casus-belli.keys.Set {
+                            cb.error(qq:to«END».chomp)
                             Casus belli not recognised
                             END
                         } else {
-                            my \cb-info = casus-belli{cb};
+                            my \cb-info = casus-belli{cb.&kw};
+
+                            sub cb-infamy-cost(Associative \cb-info --> Rat){
+                                my \factor  = cb-info<badboy_factor>;
+                                my \options = cb-info<options>;
+                                factor * [+] options.map(-> \option {
+                                    hardcoded::peace-option-to-define{option}
+                                    andthen hardcoded::infamy-costs{$_}
+                                    orelse do {
+                                        cb.error(qq:to«END».chomp);
+                                        $*STYLES.alert("$*PROGRAM-NAME internal error") (This is not your or the mod’s fault.)
+                                        Casus belli has unrecognised peace option cost: $*STYLES.code(option.Str)
+                                        END
+                                        1 #`(non-null infamy to be noisy by default)
+                                    }
+                                })
+                            }
+
+                            my \infamy = cb-infamy-cost(cb-info);
 
                             unless
                                 # defender doesn’t pay infamy cost
@@ -233,12 +297,9 @@ our grammar Base is PDS::Unstructured {
                                 || cb-info<always>
                                 # CB was granted prior
                                 || .<value>.&kw ∈ %nearby-casus-belli
-                                # infamy cost scaled down to 0
-                                || (do cb-info<badboy_factor> andthen $_ == 0)
-                                # Check not performed: total base cost of all peace options is null. Since those base costs
-                                # are (likely) hardcoded and too annoying to work out, we instead assume that all fabricated
-                                # CBs have an infamy cost. This should be reasonable.
+                                || infamy == 0
                             {
+                                my $alignment = " " x infamy.Str.chars;
                                 .quirk(qq:to«END».chomp);
                                 $*STYLES.header("CB was not granted to the attacker prior to starting war")
 
@@ -248,8 +309,9 @@ our grammar Base is PDS::Unstructured {
                                 Consider separately granting the CB to the attacker just prior, together with an explicit infamy cost:
                                 {
                                     $*STYLES.code(qq:to«END»).chomp.indent(4)
-                                    badboy = $*STYLES.code-focus("3")$*STYLES.code(" # pick any amount of your choice that feels fair,")
-                                               # or remove if the war should cost no infamy
+                                    badboy = $*STYLES.code-focus(infamy.Str)$*STYLES.code(" # actual infamy amount,")
+                                             $alignment # or pick any amount of your choice that feels fair,
+                                             $alignment # or remove if the war should cost no infamy
 
                                     casus_belli = \{
                                         target = {war-block<target>[0]<value> andthen .Str orelse $*STYLES.code-highlight("<war lacks a target>")}
@@ -309,6 +371,7 @@ our grammar CasusBelli is Base {
                         do given .<value> {
                             badboy_factor => .<badboy_factor>[0].&{ .<value>.?Rat // 0 },
                             (:always if .<always>[0].&yes),
+                            options => .<options>.map(*<key>.Str).List,
                         }
                     )
                 }).List,
@@ -358,7 +421,8 @@ our grammar CasusBelli is Base {
             | @<entries=allowed_substate_regions> = (<key=.kw('allowed_substate_regions')> '=' <value=.trigger-block>)
             | @<entries=allowed_states_in_crisis> = (<key=.kw('allowed_states_in_crisis')> '=' <value=.trigger-block>)
 
-            | @<entries=options=all_allowed_states>              = (<key=.kw('all_allowed_states')>              '=' <value=.yes-or-no>)
+            | @<entries=all_allowed_states>       = (<key=.kw('all_allowed_states')>       '=' <value=.yes-or-no>)
+
             | @<entries=options=po_status_quo>                   = (<key=.kw('po_status_quo')>                   '=' <value=.yes-or-no>)
             | @<entries=options=po_annex>                        = (<key=.kw('po_annex')>                        '=' <value=.yes-or-no>)
             | @<entries=options=po_demand_state>                 = (<key=.kw('po_demand_state')>                 '=' <value=.yes-or-no>)
@@ -424,7 +488,7 @@ our grammar CasusBelli is Base {
             }
 
             # NYI: trigger validation
-            # NYI: peace outcome validation
+            # NYI: peace option validation
 
             .prefer-one(cb, "war_name", kinds => 0 => Remark::Missing-Localisation);
             .prefer-one(cb, "on_add", missing => Remark::Convention => qq:to«END».chomp);

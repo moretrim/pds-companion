@@ -510,7 +510,8 @@ subtest "quirk on naked CB", {
                         that are not currently on hand. This is hidden from the player.
 
                         Consider separately granting the CB to the attacker just prior, together with an explicit infamy cost:
-                            badboy = 3 # pick any amount of your choice that feels fair,
+                            badboy = 3 # actual infamy amount,
+                                       # or pick any amount of your choice that feels fair,
                                        # or remove if the war should cost no infamy
 
                             casus_belli = \{
