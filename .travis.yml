@@ -119,7 +119,10 @@ matrix:
             HFM_1_27_F=38ca75c40063e08cbf696140e0ea68d76e6ace9d
             fetch_single_commit HFM https://github.com/SighPie/HFM.git "$HFM_1_27_F"
             cat >hfm.whitelist <<EOF
+              # invention typo
               history/countries/GRE - Greece.txt
+              # ad hoc call to arms war
+              events/BoerWar.txt
               map/province_flag_sprites/kiel_canal.txt
               map/province_flag_sprites/suez_canal.txt
         EOF
