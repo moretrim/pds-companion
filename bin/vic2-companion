@@ -222,7 +222,7 @@ class ProcessResult {
     method status(::?CLASS:D: --> status::status:D) {
         sub good($_ --> Bool:D) {
             ? (
-                .so && { PDS::Remark::Error !∈ .<REMARKS>.map(*.kind).Set }
+                .so && do { PDS::Remark::Error !∈ .<REMARKS>.map(*.kind).Set }
             )
         }
 
