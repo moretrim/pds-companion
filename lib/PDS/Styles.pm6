@@ -298,3 +298,27 @@ method header(
 role Stylish {
     has PDS::Styles:D $.styles = PDS::Styles.new;
 }
+
+=head2 Conventional messages
+
+#| Format styled, structured warning.
+method format-warning(Str:D \msg --> Str:D)
+{
+    constant header = "WARNING";
+    my \lines = msg.split("\n");
+
+    if lines.elems <= 1 {
+        my \styled-header       = $.alert("‣ {header}");
+
+        "{styled-header} {lines[0]}"
+    } else {
+        my \styled-header       = $.alert("┌ {header}");
+        my \styled-continuation = $.alert("│ ");
+        my \styled-closer       = $.alert("└ ");
+
+        qq:to«END».chomp
+        {styled-header} {lines[0]}{lines[1 ..^ * - 1].map("\n" ~ styled-continuation ~ *).join}
+        {styled-closer}{lines[* - 1]}
+        END
+    }
+}

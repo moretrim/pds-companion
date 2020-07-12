@@ -2,6 +2,7 @@
 
 use lib 'lib';
 use PDS;
+use PDS::Mod;
 use PDS::Styles;
 use PDS::Victoria2;
 
@@ -55,6 +56,7 @@ unit sub MAIN(
 # process arguments
 
 my Styles:D $styles = Styles.new(when-to-when($color));
+sub note-warning(Str:D \msg --> Bool:D) { note $styles.format-warning(msg) }
 
 $heartbeat = do given $heartbeat -> $_ --> Int {
     when * eqv True  { 30 }
@@ -79,18 +81,10 @@ my List:D \whitelist = do with $whitelist {
     )».&{.trim.IO.cleanup}
 } // ();
 
-my \exts = $exts.split(",")».fc.any;
+my \exts = $exts.split(",");
 my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
 
-my IO:D @files = gather {
-    my @pending = @requests;
-    while @pending {
-        with @pending.shift {
-            when :d { @pending.append(.dir) }
-            .take when .extension(:parts(^Inf)).fc ~~ *.ends-with(exts);
-        }
-    }
-}
+my IO:D @files = gather PDS::Mod::files-from-absolute-paths(@requests, exts);
 
 my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
     PDS::Remark::Kind::.values.Set (-) PDS::Remark::Error
@@ -159,26 +153,10 @@ my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
 
 # preliminaries
 
-sub path-components(IO:D \path --> List:D)
-{
-    # this appears to race during multiprocessing and leads to all kinds of headaches
-    # path.SPEC.splitdir(path)
-    path.path.split(path.SPEC.dir-sep).List
-}
-
-#| Example: C<path-matches("path/to/a/b/c.txt".IO, <a b c.txt>)>
-sub path-matches(IO:D \path, Positional \components --> Bool:D)
-{
-    my \path-comps = path-components(path);
-
-    components.elems <= path-comps.elems &&
-    # from most to least specific component part
-    [&&] path-comps.reverse Zeq components.reverse
-}
-
 sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
 {
-    so whitelist.any ~~ { path-matches(candidate, path-components($^whitelisted)) }
+    so whitelist.any ~~
+        { PDS::Mod::path-matches(candidate, PDS::Mod::path-components($^whitelisted)) }
 }
 
 constant victoria2-grammars = (
@@ -187,27 +165,6 @@ constant victoria2-grammars = (
 );
 
 constant victoria2-fallback = PDS::Unstructured;
-
-sub note-warning(Str:D \msg --> Bool:D)
-{
-    constant header = "WARNING";
-    my \lines = msg.split("\n");
-
-    if lines.elems <= 1 {
-        my \styled-header       = $styles.alert("‣ {header}");
-
-        note "{styled-header} {lines[0]}"
-    } else {
-        my \styled-header       = $styles.alert("┌ {header}");
-        my \styled-continuation = $styles.alert("│ ");
-        my \styled-closer       = $styles.alert("└ ");
-
-        note qq:to«END».chomp
-        {styled-header} {lines[0]}{lines[1 ..^ * - 1].map("\n" ~ styled-continuation ~ *).join}
-        {styled-closer}{lines[* - 1]}
-        END
-    }
-}
 
 package status { enum status «success expected-failure failure unexpected-success»; }
 
@@ -233,32 +190,16 @@ class ProcessResult {
             when :so,  ?*.&good { status::unexpected-success }
         }
     }
-}
 
-sub pair-grammar(IO:D \file --> Pair:D)
-{
-    my \dir = file.SPEC.catdir(path-components(file)[^(*-1)]).IO;
-    my \candidates = victoria2-grammars.grep({ path-matches(dir, .where.List) && .what.ACCEPTS(file.basename) });
-    if candidates.elems > 1 {
-        note-warning qq:to«END».chomp
-        File {$styles.quote-path(file.path)} is ambiguous because its path matches the following:
-        • {candidates.map({ "{$styles.quote-path(.where.join("/"))} for {.descr}" }).join("\n• ")}
-        It is being treated as if it were part of the {candidates[0].descr}.
-        Possible fix: point $styles.attention($*PROGRAM-NAME) to a higher base path to help disambiguate.
-        END
+    our sub from-file((:key($file), :value($grammar)), :%universe --> ProcessResult:D)
+    {
+        my \parsed = PDS::parse($grammar, $file, :$styles, :%universe);
+
+        # condense entire match to concrete result in case of success
+        # this avoids carrying around file contents inside (sometimes huge) ast pieces
+        my $result  = do parsed andthen .made orelse parsed;
+        ProcessResult.new(path => $file, :$result)
     }
-
-    (file) => candidates ?? candidates[0] !! victoria2-fallback
-}
-
-sub process-file((:key($file), :value($grammar)), :%universe --> ProcessResult:D)
-{
-    my \parsed = PDS::parse($grammar, $file, :$styles, :%universe);
-
-    # condense entire match to concrete result in case of success
-    # this avoids carrying around file contents inside (sometimes huge) ast pieces
-    my $result  = do parsed andthen .made orelse parsed;
-    ProcessResult.new(path => $file, :$result)
 }
 
 sub process-levels(@files --> Map:D)
@@ -269,10 +210,16 @@ sub process-levels(@files --> Map:D)
 
     use PDS::unsorted;
 
-    for @files.map(&pair-grammar).classify({ .value.?topo-level // Inf }).sort(*.key).map(*.value) -> @level {
+    my @levels = PDS::Mod::structure(
+        @files, victoria2-grammars,
+        :$styles,
+        fallback-grammar => victoria2-fallback
+    );
+
+    for @levels -> @level {
         my \level = @level
             .race(degree => $jobs, :1batch)
-            .map(&process-file.assuming(:%universe))
+            .map(&ProcessResult::from-file.assuming(:%universe))
             .List;
         %universe .= &extend-associative(|[[&merge-associatives]] %(), |level.map({ .result<RESULT>:v }).grep(Associative));
         @incomplete-universe.append(level.map({ .result<INCOMPLETE-UNIVERSE>:v.Slip }));
@@ -291,16 +238,16 @@ sub process-levels(@files --> Map:D)
 if @files.elems == 0 {
     if @requests {
         print qq:to«END»;
-        $*PROGRAM-NAME found no files to process.
+        $styles.attention($*PROGRAM-NAME) found no files to process.
         END
     } else {
         print qq:to«END»;
-        $*PROGRAM-NAME had no files to process because no path was specified. If this was not what you intended, see usage with `$*PROGRAM-NAME --help`.
+        $styles.attention($*PROGRAM-NAME) had no files to process because no path was specified. If this was not what you intended, see usage with `$styles.attention($*PROGRAM-NAME) --help`.
         END
     }
     return
 } else {
-    say "$*PROGRAM-NAME is processing {@files.elems} {@files.elems == 1 ?? "file" !! "files"}...";
+    say "$styles.attention($*PROGRAM-NAME) is processing {@files.elems} {@files.elems == 1 ?? "file" !! "files"}...";
     $*OUT.flush;
 }
 

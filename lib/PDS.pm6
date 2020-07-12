@@ -744,6 +744,24 @@ grammar Unstructured is Grammar {
     }
 }
 
+#| A structured grammar is one that deals in a particular subset of mod files, according to mod structure.
+grammar Structured is Unstructured {
+    my subset PathSuffix of Any where Str|List;
+
+    #| For the purpose of parallel processing, structured grammars expose their topological level. This is with respect
+    #| to the tree structure of game or mod files. Parsing should start with grammars at level zero with an empty
+    #| universe, collecting the respective C<.made<RESULT>> results into an expanded universe. This will be fed into the
+    #| parsing at level one, and so on.
+    proto method topo-level(::?CLASS:D: --> Num:D)        { … }
+
+    #| Path suffix for the directory inside the game or mod structure containing the files of interest to the grammar.
+    proto method      where(::?CLASS:D: --> PathSuffix:D) { … }
+    #| Smartmatch pattern for base names of interest to the grammar.
+    proto method       what(::?CLASS:D: --> Any:D)        { … }
+    #| Brief human-friendly description of what the grammar parses.
+    proto method      descr(::?CLASS:D: --> Str:D)        { … }
+}
+
 =head2 AST Queries
 
 # :ast export directives due to cross-module import+alias issues

@@ -72,23 +72,7 @@ our constant infamy-costs = %(
 } # hardcoded
 
 #| Base for common items for Victoria 2 grammars.
-our grammar Base is PDS::Unstructured {
-    ## Grammar organisation (to be overriden)
-
-    my subset PathPrefix of Any where Str|List;
-
-    #| For the purpose of parallel processing, grammars expose their topological level. This is with respect to the
-    #| tree structure of game or mod files. Parsing should start with grammars at level zero with an empty universe,
-    #| collecting the respective C<.made<RESULT>> results into an expanded universe. This will be fed into the parsing
-    #| at level one, and so on.
-    proto method topo-level(::?CLASS:D: --> Num:D)        { … }
-    #| Path suffix for the directory inside the game or mod structure containing the files of interest to the grammar.
-    proto method      where(::?CLASS:D: --> PathPrefix:D) { … }
-    #| Smartmatch pattern for base names of interest to the grammar.
-    proto method       what(::?CLASS:D: --> Any:D)        { … }
-    #| Brief human-friendly description of what the grammar parses.
-    proto method      descr(::?CLASS:D: --> Str:D)        { … }
-
+our grammar Base is PDS::Structured {
     ## Tokens
 
     token casus-belli { <soup=.text> }
