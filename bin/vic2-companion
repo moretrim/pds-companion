@@ -2,7 +2,7 @@
 
 use lib 'lib';
 use PDS;
-use PDS::Mod;
+use PDS::Overlay;
 use PDS::Styles;
 use PDS::Victoria2;
 
@@ -21,35 +21,37 @@ sub when-to-when(When:D $_ --> Styles::When:D) {
     when auto   { Styles::auto }
 }
 
-#| Perform static analysis of Victoria 2 game files.
+#| Perform static analysis of Victoria 2 game or mod files.
 unit sub MAIN(
-    #| game or mod paths to analyse recursively (relative to <base> when specified, current working directory otherwise)
-    **@paths,
+    #| one or more game or mod paths to analyse recursively (they should all be <base> subpaths
+    #| [NYI])
+    **@paths [$, **@],
 
     #| number of parallel jobs (default: 1.25 × number of cores, rounded)
     Positive :j(:$jobs) = round(1.25 * $*KERNEL.cpu-cores),
 
-    #| when to colourise the output (default: ‘auto’), but note that colour output can only be performed if
-    #| Terminal::ANSIColor is installed
+    #| when to colourise the output (default: ‘auto’), but note that colour output can only be
+    #| performed if Terminal::ANSIColor is installed
     When :colour(:$color) = When::auto,
 
-    #| periodically emit a heartbeat message, useful during long processings (interval in seconds, default if flag is
-    #| set: 30s)
+    #| periodically emit a heartbeat message, useful during long processings (interval in seconds,
+    #| default if flag is set: 30s)
     OptionalPositive :$heartbeat is copy,
 
-    #| whitelist file to read, containing one file (and not a directory) that is expected to fail per line (default if
-    #| flag is set: ‘whitelist’)
+    #| whitelist file to read, containing one file (and not a directory) that is expected to fail
+    #| per line (default if flag is set: ‘whitelist’)
     OptionalPath :$whitelist is copy,
 
-    #| base path to game or mod files
-    Path :$base is copy,
+    ##| NYI: game or mod directory basename (default: current working directory basename)
+    # Str:D :$base = $*CWD.basename,
 
     #| comma-separated list of extensions for the files of interest (default: ‘txt’)
     Str :$exts = "txt",
 
     # N.b. have to hardcode Kind enumerators here
-    #| comma-separated list of kinds of remarks to display (default: empty; possible kinds: ‘quirk’, ‘convention’,
-    #| ‘missing-localisation’, ‘missing-info’, ‘opinion’), or special value ‘all’ by itself to display all kinds
+    #| comma-separated list of kinds of remarks to display (default: empty; possible kinds: ‘quirk’,
+    #| ‘convention’, ‘missing-localisation’, ‘missing-info’, ‘opinion’), or special value ‘all’ by
+    #| itself to display all kinds
     Str :$remarks = "",
 );
 
@@ -57,6 +59,8 @@ unit sub MAIN(
 
 my Styles:D $styles = Styles.new(when-to-when($color));
 sub note-warning(Str:D \msg --> Bool:D) { note $styles.format-warning(msg) }
+
+my \overlay = PDS::Overlay.new(#`(:$base, ):$styles);
 
 $heartbeat = do given $heartbeat -> $_ --> Int {
     when * eqv True  { 30 }
@@ -78,13 +82,10 @@ my List:D \whitelist = do with $whitelist {
             # leading ‘#’ introduces a comment line
             / ^ \s* "#" /
         ).none
-    )».&{.trim.IO.cleanup}
+    ).map({ .trim.IO.cleanup })
 } // ();
 
 my \exts = $exts.split(",");
-my @requests = ($base ?? @paths.map({ $base.IO.add(.IO) }) !! @paths».IO)».cleanup;
-
-my IO:D @files = gather PDS::Mod::files-from-absolute-paths(@requests, exts);
 
 my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
     PDS::Remark::Kind::.values.Set (-) PDS::Remark::Error
@@ -122,9 +123,9 @@ my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
                 (
                     prominent-usage("(‘"),
                     $styles.important("all"),
-                    &prominent-usage("’ is not a valid comma-list item, it must be used by itself: "),
+                    prominent-usage("’ is not a valid comma-list item, it must be used by itself: "),
                     $styles.code("--remarks=all"),
-                    &prominent-usage(")"),
+                    prominent-usage(")"),
                 ).join
             } else {
                 Empty
@@ -156,15 +157,13 @@ my Set:D \remarks-of-interest = do if $remarks.trim.fc eq "all".fc {
 sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
 {
     so whitelist.any ~~
-        { PDS::Mod::path-matches(candidate, PDS::Mod::path-components($^whitelisted)) }
+        { PDS::Overlay::path-matches(candidate, PDS::Overlay::path-components($^whitelisted)) }
 }
 
 constant victoria2-grammars = (
     PDS::Victoria2::CasusBelli,
     PDS::Victoria2::Events,
 );
-
-constant victoria2-fallback = PDS::Unstructured;
 
 package status { enum status «success expected-failure failure unexpected-success»; }
 
@@ -202,26 +201,48 @@ class ProcessResult {
     }
 }
 
-sub process-levels(@files --> Map:D)
+sub process-levels(@paths --> Map:D)
 {
+
+    my @levels = overlay.structure(@paths.map(*.IO), exts, victoria2-grammars);
+
+    my $count = @levels.flat.elems;
+    if $count == 0 {
+        if @paths {
+            print qq:to«END»;
+            $styles.attention($*PROGRAM-NAME) found no files to process.
+            END
+        } else {
+            print qq:to«END»;
+            $styles.attention($*PROGRAM-NAME) had no files to process because no path was specified. If this was not what you intended, see usage with `$styles.attention($*PROGRAM-NAME) --help`.
+            END
+        }
+
+        exit
+    } else {
+        say qq:to«END».chomp;
+        $styles.attention($*PROGRAM-NAME) is processing $count {$count == 1 ?? "file" !! "files"}...
+        END
+        $*OUT.flush;
+    }
+
     my %universe;
     my @incomplete-universe;
     my @results;
 
     use PDS::unsorted;
 
-    my @levels = PDS::Mod::structure(
-        @files, victoria2-grammars,
-        :$styles,
-        fallback-grammar => victoria2-fallback
-    );
-
     for @levels -> @level {
-        my \level = @level
+        my \level = do {
+            @level
             .race(degree => $jobs, :1batch)
             .map(&ProcessResult::from-file.assuming(:%universe))
-            .List;
-        %universe .= &extend-associative(|[[&merge-associatives]] %(), |level.map({ .result<RESULT>:v }).grep(Associative));
+            .List
+        };
+
+        %universe .= &extend-associative(
+            |[[&merge-associatives]] %(), |level.map({ .result<RESULT>:v }).grep(Associative)
+        );
         @incomplete-universe.append(level.map({ .result<INCOMPLETE-UNIVERSE>:v.Slip }));
         @results.append(level);
     }
@@ -233,28 +254,12 @@ sub process-levels(@files --> Map:D)
     @results.classify(*.status)
 }
 
-# get started
-
-if @files.elems == 0 {
-    if @requests {
-        print qq:to«END»;
-        $styles.attention($*PROGRAM-NAME) found no files to process.
-        END
-    } else {
-        print qq:to«END»;
-        $styles.attention($*PROGRAM-NAME) had no files to process because no path was specified. If this was not what you intended, see usage with `$styles.attention($*PROGRAM-NAME) --help`.
-        END
-    }
-    return
-} else {
-    say "$styles.attention($*PROGRAM-NAME) is processing {@files.elems} {@files.elems == 1 ?? "file" !! "files"}...";
-    $*OUT.flush;
-}
-
 # do the work
 
-my \heartbeats = do with $heartbeat { Supply.interval($_, $_).map({ now.DateTime.local.hh-mm-ss }) };
-my \processing = start process-levels(@files);
+my \heartbeats = do with $heartbeat {
+    Supply.interval($_, $_).map({ now.DateTime.local.hh-mm-ss })
+};
+my \processing = start process-levels(@paths);
 
 my \start = now;
 my \results = await supply {
@@ -287,9 +292,13 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
 {
     if items {
         my \count = items.elems;
-        my \count-report = $styles.style("{count.fmt("%{count-width}d")} {number<file>(count)}", styles);
+        my \count-report = $styles.style(qq:to«END».chomp, styles);
+        {count.fmt("%{count-width}d")} {number<file>(count)}
+        END
 
-        sub source($_) { $_ andthen $styles.quote-path($_) orelse $styles.important("<unspecified>") }
+        sub source($_) {
+            $_ andthen $styles.quote-path($_) orelse $styles.important("<unspecified>")
+        }
 
         my \file-report = do if $list-files {
             qq:to«END».chomp
@@ -303,34 +312,20 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
             Empty
         }
 
-        my \failure-report = do if $explain && (my \failures = items.grep({ .result.any ~~ Failure }).List) {
+        my \failure-report = do if $explain
+                                   && (my \failures = items.grep({
+                                       .result.any ~~ Failure
+                                   }).List) {
             qq:to«END».chomp
             {number<it>(count).tc} produced the following $styles.alert("failures"):
             {
                 failures.map({
                     qq:to«END».chomp
                     In {source(.path.path)}:
-                    {given .result { (.exception.message, .backtrace.nice.chomp).join("\n").indent(4) }}
-                    END
-                }).join("\n\n").indent(4)
-            }
-            END
-        } else {
-            Empty
-        }
-
-        my \error-report = do if $explain
-                                 && (my \errors = items.grep({ PDS::Remark::Error ∈ .remarks.map(*.kind) }).List) {
-            qq:to«END».chomp
-            {number<it>(count).tc} {number<contains>(count)} the following $styles.alert("errors"):
-            {
-                errors.map({
-                    qq:to«END».chomp
-                    In {source(.path.path)}:
                     {
-                        .remarks.grep({ .kind eqv PDS::Remark::Error }).classify(*.kind).sort(*.key).map({
-                            PDS::Report::format-reports(.value.sort(*.contexts».key.min)).join("\n\n")
-                        }).join("\n\n").indent(4)
+                        given .result {
+                            (.exception.message, .backtrace.nice.chomp).join("\n").indent(4)
+                        }
                     }
                     END
                 }).join("\n\n").indent(4)
@@ -340,7 +335,38 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
             Empty
         }
 
-        my \remark-report = do if my \remarks = items.grep({ .remarks.map(*.kind) ∩ remarks-of-interest }).List {
+        my \error-report = do if $explain
+                                 && (my \errors = items.grep({
+                                     PDS::Remark::Error ∈ .remarks.map(*.kind)
+                                 }).List) {
+            qq:to«END».chomp
+            {number<it>(count).tc} {number<contains>(count)} the following $styles.alert("errors"):
+            {
+                errors.map({
+                    qq:to«END».chomp
+                    In {source(.path.path)}:
+                    {
+                        .remarks
+                        .grep({ .kind eqv PDS::Remark::Error })
+                        .classify(*.kind)
+                        .sort(*.key)
+                        .map({
+                            PDS::Report::format-reports(.value.sort(*.contexts.map(*.key).min))
+                            .join("\n\n")
+                        })
+                        .join("\n\n").indent(4)
+                    }
+                    END
+                }).join("\n\n").indent(4)
+            }
+            END
+        } else {
+            Empty
+        }
+
+        my \remark-report = do if my \remarks = items.grep({
+                                .remarks.map(*.kind) ∩ remarks-of-interest
+                            }).List {
             qq:to«END».chomp
             {number<it>(count).tc} {number<was>(count)} accompanied by the following remarks:
             {
@@ -348,13 +374,21 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
                     qq:to«END».chomp
                     In {source(.path.path)}:
                     {
-                        .remarks.grep({ .kind ∈ remarks-of-interest }).classify(*.kind).sort(*.key).map({
+                        .remarks
+                        .grep({ .kind ∈ remarks-of-interest })
+                        .classify(*.kind)
+                        .sort(*.key)
+                        .map({
                             my \attrs = .key.&PDS::Remark::kind-attrs(:$styles);
                             qq:to«END».chomp
                             {attrs<descr>}:
-                            {PDS::Report::format-reports(.value.sort(*.contexts».key.min)).join("\n\n").indent(4)}
+                            {
+                                PDS::Report::format-reports(.value.sort(*.contexts.map(*.key).min))
+                                .join("\n\n").indent(4)
+                            }
                             END
-                        }).join("\n\n").indent(4)
+                        })
+                        .join("\n\n").indent(4)
                     }
                     END
                 }).join("\n\n").indent(4)
@@ -380,7 +414,7 @@ sub style-outcome(\items, &descr, \styles, Bool :$explain, Bool :$list-files)
 }
 
 put qq:to«END»;
-Processed all {number<file>(@files.elems)} in {duration.fmt("%.2fs")}:
+Processed all {number<file>(@paths.elems)} in {duration.fmt("%.2fs")}:
 END
 
 (

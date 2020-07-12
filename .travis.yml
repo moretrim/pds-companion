@@ -74,7 +74,7 @@ matrix:
         EOF
 
             # run regression test
-            vic2-companion --heartbeat --whitelist=hpm.whitelist --base=HPM/HPM .
+            vic2-companion --heartbeat --whitelist=hpm.whitelist .
           '
 
     -
@@ -128,5 +128,5 @@ matrix:
         EOF
 
             # run regression test
-            vic2-companion --heartbeat --whitelist=hfm.whitelist --base=HFM/HFM .
+            vic2-companion --heartbeat --whitelist=hfm.whitelist .
           '
