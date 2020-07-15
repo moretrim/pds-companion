@@ -77,6 +77,16 @@ our grammar Base is PDS::Structured {
 
     token casus-belli { <soup=.text> }
 
+    ## Picture & news
+
+    rule picture          { <key=.kw('picture')>          '=' <value=.text>      }
+
+    rule news             { <key=.kw('news')>             '=' <value=.yes-or-no> }
+    rule news_title       { <key=.kw('news_title')>       '=' <value=.text>      }
+    rule news_desc_long   { <key=.kw('news_desc_long')>   '=' <value=.text>      }
+    rule news_desc_medium { <key=.kw('news_desc_medium')> '=' <value=.text>      }
+    rule news_desc_short  { <key=.kw('news_desc_short')>  '=' <value=.text>      }
+
     ## Triggers
 
     rule trigger {
@@ -92,7 +102,7 @@ our grammar Base is PDS::Structured {
 
     ## Effects
 
-    rule effect(::?CLASS:D \group) {
+    rule effects(::?CLASS:D \group) {
         | <soup=add_country_modifier>
         | <soup=add_province_modifier>
         | <soup=country-event-effect>
@@ -105,7 +115,7 @@ our grammar Base is PDS::Structured {
     }
 
     rule effect-block(::?CLASS $group?) {
-        '{' ~ '}' [ {} <entries=effects=.effect($group // $/)> ]*
+        '{' ~ '}' [ {} <entries=effects=.effects($group // $/)> ]*
     }
 
     rule add_country_modifier  {
@@ -492,6 +502,83 @@ our grammar CasusBelli is Base {
     }
 }
 
+#| Parse a decision file.
+our grammar Decisions is Base {
+    method topo-level { 1 }
+    method where      { <decisions> }
+    method what       { Any }
+    method descr      { "decision files" }
+
+    rule TOP(Styles:D :$styles!, Str :$source, :%universe = %()) {
+        :my $*STYLES   = $styles;
+        :my $*SOURCE   = $source;
+        :my %*UNIVERSE = %universe;
+        :my @*REMARKS;
+
+        ^ <.kw('political_decisions')> '=' '{' ~ '}' <entries=.decision>* $
+
+        {
+            my \incomplete-universe = do unless %universe<casus-belli>:exists {
+                qq:to«END».chomp,
+                While analysing $.descr():
+                some effects will not be fully validated unless $*STYLES.quote-path("common/cb_types.txt") is analysed.
+                END
+            }
+
+            remake(
+                $/,
+                REMARKS => @*REMARKS,
+                RESULT  => decision-keys => %(
+                    $source => @<entries>.map(&decision-key).grep(*.defined).List
+                ),
+                INCOMPLETE-UNIVERSE => incomplete-universe,
+            )
+        }
+    }
+
+    rule decision {
+        <key=.identifier> '=' <value=.decision-block>
+        {} <.validate-decision>
+    }
+
+    rule decision-block {
+        '{' ~ '}' [
+            | <entries=alert>
+
+            | <entries=picture>
+
+            | <entries=news>
+            | <entries=news_title>
+            | <entries=news_desc_long>
+            | <entries=news_desc_medium>
+            | <entries=news_desc_short>
+
+            | <entries=potential>
+            | <entries=allow>
+            | <entries=decision-effect>
+            | <entries=ai_will_do>
+        ]*
+    }
+
+    rule alert           { <key=.kw('alert')>      '=' <value=.yes-or-no>     }
+    rule potential       { <key=.kw('potential')>  '=' <value=.trigger-block> }
+    rule allow           { <key=.kw('allow')>      '=' <value=.trigger-block> }
+    rule decision-effect { <key=.kw('effect')>     '=' <value=.effect-block>  }
+    rule ai_will_do      { <key=.kw('ai_will_do')> '=' <value=.trigger-block> }
+
+    method validate-decision {
+        my (\decision, \decision-block) = self<key value>;
+
+        given decision-block {
+        }
+
+        $.ok
+    }
+}
+
+our sub decision-key(\ast where Any:U|Match --> Int) is export(:ast)
+{ pair(ast) && ast<key> }
+
 #| Parse an event file.
 our grammar Events is Base {
     method topo-level { 1 }
@@ -569,29 +656,22 @@ our grammar Events is Base {
 
     method province-event-block() { self.country-event-block }
 
-    rule id                       { <key=.kw('id')>                       '=' <value=.number>   }
-    rule title                    { <key=.kw('title')>                    '=' <value=.text>     }
-    rule desc                     { <key=.kw('desc')>                     '=' <value=.text>     }
-    rule picture                  { <key=.kw('picture')>                  '=' <value=.text>     }
-    rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no> }
-    rule election                 { <key=.kw('election')>                 '=' <value=.yes-or-no> }
-    rule issue_group              { <key=.kw('issue_group')>              '=' <value=.text> }
+    rule id                       { <key=.kw('id')>                       '=' <value=.number>        }
+    rule title                    { <key=.kw('title')>                    '=' <value=.text>          }
+    rule desc                     { <key=.kw('desc')>                     '=' <value=.text>          }
+    rule major                    { <key=.kw('major')>                    '=' <value=.yes-or-no>     }
+    rule election                 { <key=.kw('election')>                 '=' <value=.yes-or-no>     }
+    rule issue_group              { <key=.kw('issue_group')>              '=' <value=.text>          }
 
-    rule news                     { <key=.kw('news')>                     '=' <value=.yes-or-no> }
-    rule news_title               { <key=.kw('news_title')>               '=' <value=.text> }
-    rule news_desc_long           { <key=.kw('news_desc_long')>           '=' <value=.text> }
-    rule news_desc_medium         { <key=.kw('news_desc_medium')>         '=' <value=.text> }
-    rule news_desc_short          { <key=.kw('news_desc_short')>          '=' <value=.text> }
-
-    rule is_triggered_only        { <key=.kw('is_triggered_only')>        '=' <value=.yes-or-no> }
-    rule fire_only_once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no> }
-    rule allow_multiple_instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no> }
+    rule is_triggered_only        { <key=.kw('is_triggered_only')>        '=' <value=.yes-or-no>     }
+    rule fire_only_once           { <key=.kw('fire_only_once')>           '=' <value=.yes-or-no>     }
+    rule allow_multiple_instances { <key=.kw('allow_multiple_instances')> '=' <value=.yes-or-no>     }
 
     rule event_trigger            { <key=.kw('trigger')>                  '=' <value=.trigger-block> }
-    rule mean_time_to_happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block> }
+    rule mean_time_to_happen      { <key=.kw('mean_time_to_happen')>      '=' <value=.block>         }
 
-    rule immediate                { <key=.kw('immediate')>                '=' <value=.effect-block> }
-    rule option                   { <key=.kw('option')>                   '=' <value=.option-block> }
+    rule immediate                { <key=.kw('immediate')>                '=' <value=.effect-block>  }
+    rule option                   { <key=.kw('option')>                   '=' <value=.option-block>  }
 
     rule option-block {
         '{' ~ '}' [ {}
@@ -599,7 +679,7 @@ our grammar Events is Base {
             | @<entries=ai_chance>=(<key=.kw('ai_chance')> '=' <value=.trigger-block>)
 
             # catch-all
-            | <entries=catchall-option=effects=.effect($/)>
+            | <entries=catchall-option=effects($/)>
         ]*
     }
 

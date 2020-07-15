@@ -162,6 +162,7 @@ sub is-whitelisted(IO:D \candidate, Positional \whitelist --> Bool:D)
 
 constant victoria2-grammars = (
     PDS::Victoria2::CasusBelli,
+    PDS::Victoria2::Decisions,
     PDS::Victoria2::Events,
 );
 
