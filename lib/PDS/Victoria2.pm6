@@ -83,7 +83,7 @@ our grammar Base is PDS::Structured {
         | $<soup=ai>=(<key=.kw('ai')> '=' <value=.yes-or-no>)
 
         # catch-all
-        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=trigger-block>])
+        | $<soup=catchall-trigger>=(<key=.simplex> '=' [<value=.simplex>|<value=trigger-block>])
     }
 
     rule trigger-block {
@@ -101,7 +101,7 @@ our grammar Base is PDS::Structured {
         | <soup=war-effect(group)>
 
         # catch-all
-        | $<soup>=(<key=.simplex> '=' [<value=.simplex>|<value=effect-block(group)>])
+        | $<soup=catchall-effect>=(<key=.simplex> '=' [<value=.simplex>|<value=effect-block(group)>])
     }
 
     rule effect-block(::?CLASS $group?) {
@@ -594,12 +594,12 @@ our grammar Events is Base {
     rule option                   { <key=.kw('option')>                   '=' <value=.option-block> }
 
     rule option-block {
-        '{' ~ '}' [
+        '{' ~ '}' [ {}
             | @<entries=name>=(<key=.kw('name')> '=' <value=.simplex>)
             | @<entries=ai_chance>=(<key=.kw('ai_chance')> '=' <value=.trigger-block>)
 
             # catch-all
-            | {} <entries=effects=.effect($/)>
+            | <entries=catchall-option=effects=.effect($/)>
         ]*
     }
 
