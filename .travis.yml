@@ -10,9 +10,19 @@ services:
 # Container setup.
 before_install:
   - |
-    docker build -t perl6-ci - <<EOF
-      FROM jjmerelo/test-perl6
-      RUN apk add --no-cache bash
+    docker build -t ci-image - <<EOF
+      FROM jjmerelo/raku-test
+
+      USER root
+      RUN ["apk", "add", "--no-cache", "bash"]
+
+      RUN addgroup -S ci-runner && adduser -S ci-runner -G ci-runner
+      RUN mkdir /build && chown ci-runner: /build
+      VOLUME /build
+
+      USER ci-runner
+      WORKDIR /build
+
       # skip here-document terminator due to Travis silliness; produces a warning
   - docker images
 
@@ -29,11 +39,11 @@ matrix:
     -
       name: "Tests"
       script: |
-        docker run -t \
-          --name container-env \
-          --volume "$TRAVIS_BUILD_DIR":/test \
-          --entrypoint bash \
-          perl6-ci -c '
+        docker run -t                         \
+          --name container-env                \
+          --volume "$TRAVIS_BUILD_DIR":/build \
+          --entrypoint bash                   \
+          ci-image -c '
             # fail on first error
             set -Eeuo pipefail
 
@@ -48,11 +58,13 @@ matrix:
       name: "HPM Regression Testing"
       regression: 1
       script: |
-        docker run -t \
-          --name container-env \
-          --volume "$TRAVIS_BUILD_DIR":/test \
-          --entrypoint bash \
-          perl6-ci -c '
+        # includes --user workaround for jjmerelo/raku-test
+        docker run -t                         \
+          --name container-env                \
+          --volume "$TRAVIS_BUILD_DIR":/build \
+          --entrypoint bash                   \
+          --user root                         \
+          ci-image -c '
             # fail on first error
             set -Eeuo pipefail
 
@@ -81,11 +93,13 @@ matrix:
       name: "HFM Regression Testing"
       regression: 1
       script: |
-        docker run -t \
-          --name container-env \
-          --volume "$TRAVIS_BUILD_DIR":/test \
-          --entrypoint bash \
-          perl6-ci -c '
+        # includes --user workaround for jjmerelo/raku-test
+        docker run -t                         \
+          --name container-env                \
+          --volume "$TRAVIS_BUILD_DIR":/build \
+          --entrypoint bash                   \
+          --user root                         \
+          ci-image -c '
             # fail on first error
             set -Eeuo pipefail
 
