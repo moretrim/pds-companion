@@ -2,9 +2,9 @@ The Victoria 2 Modder’s Companion
 =================================
 
 Build status:
-[![travis-master][travis-master-image]](https://travis-ci.org/moretrim/pds-companion/branches)
+[![travis-master][travis-master-image]](https://travis-ci.com/moretrim/pds-companion/branches)
 
-[travis-master-image]: https://travis-ci.org/moretrim/pds-companion.svg?branch=master
+[travis-master-image]: https://travis-ci.com/moretrim/pds-companion.svg?branch=master
 
 A suite of static analysis tools for Victoria 2 modding.
 
