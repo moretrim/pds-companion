@@ -82,7 +82,7 @@ my List:D \whitelist = do with $whitelist {
             # leading ‘#’ introduces a comment line
             / ^ \s* "#" /
         ).none
-    ).map({ .trim.IO.cleanup })
+    ).map({ .trim.IO.cleanup }).List
 } // ();
 
 my \exts = $exts.split(",");
