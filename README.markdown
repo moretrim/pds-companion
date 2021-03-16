@@ -59,7 +59,7 @@ features such as whitelists.
 License
 -------
 
-Copyright © 2019–2020 moretrim. “2019–2020” and other similar notices indicate that all individual years in the range,
+Copyright © 2019–2021 moretrim. “2019–2021” and other similar notices indicate that all individual years in the range,
 inclusive, are covered.
 
 Available under the terms of the GNU General Public License version 3. See the accompanying

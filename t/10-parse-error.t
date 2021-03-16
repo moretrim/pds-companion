@@ -1,5 +1,5 @@
 =begin COPYRIGHT
-Copyright © 2019–2020 moretrim.
+Copyright © 2019–2021 moretrim.
 
 This file is part of the test suite for pds-companion.
 
