@@ -624,13 +624,13 @@ our grammar Events is Base {
             }
 
             given .<major>[0], .<picture>[0] {
-                when &yes, ?* {
+                when { .&yes }, ?* {
                     .[0].opinion(extra-locs => .[1,]»<key>, qq:to«END».chomp);
                     $element is major and has a picture (no picture is required for major events)
                     END
                 }
 
-                when &no, !* {
+                when { .&no }, !* {
                     # AI-only events are allowed not to have a picture
                     unless
                         (event-block<event_trigger>[0]<value><ai>[0].&yes)
@@ -660,7 +660,7 @@ our grammar Events is Base {
             }
 
             given .<is_triggered_only>[0], .<event_trigger>[0], .<mean_time_to_happen>[0] {
-                when (&yes, Any, Any) & { ?.[1] | ?.[2] } {
+                when ({ .&yes }, Any, Any) & { ?.[1] | ?.[2] } {
                     # TODO on-action events
                     my @extra-locs = .[1..*].grep(?*).map(*<key>).sort(*.pos);
                     .[0].opinion(qq:to«END».chomp, :@extra-locs)
@@ -670,7 +670,7 @@ our grammar Events is Base {
                     END
                 }
 
-                when (&no, !*, Any) {
+                when ({ .&no }, !*, Any) {
                     (.[0] // event).opinion(qq:to«END».chomp);
                     $element has no $*STYLES.code("trigger"). Either:
                     • add a $*STYLES.code("trigger"), if the event is intended to activate by itself
@@ -681,7 +681,7 @@ our grammar Events is Base {
                     proceed
                 }
 
-                when (&no, !*, ?*) {
+                when ({ .&no }, !*, ?*) {
                     .[2]<key>.opinion(qq:to«END».chomp)
                     $element has a $*STYLES.code("mean_time_to_happen") but no $*STYLES.code("trigger")
                     END
