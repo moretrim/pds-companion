@@ -14,6 +14,7 @@
         "PDS::remake":    "lib/PDS/remake.pm6",
         "PDS::Styles":    "lib/PDS/Styles.pm6",
         "PDS":            "lib/PDS.pm6",
+        "PDS::Overlay":   "lib/PDS/Overlay.pm6",
         "PDS::Victoria2": "lib/PDS/Victoria2.pm6"
     },
     "test-depends": [
