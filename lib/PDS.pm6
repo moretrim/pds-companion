@@ -406,9 +406,9 @@ role Contextualising[\context-info = %(:3before, :3after, :120anchor-length)] {
         my $before   = accepted.lines[((* - context-info<before>) max 0) .. *];
         my \after    = rejected.lines[0 .. context-info<after>]:v;
 
-        my \non-blank = $before.first(none(/ ^ \h* $ /), :k) // Empty; # don't use Whitespace because comments are
-                                                                       # useful for establishing context
-        $before = $before[non-blank .. *];
+        my \non-blank = $before.first(none(/ ^ \h* $ /), :k); # don't use Whitespace because comments are
+                                                              # useful for establishing context
+        $before = $before[non-blank andthen $_ .. * orelse Empty];
 
         my &style-anchor = do if $focus-anchor {
             sub focus-anchor(Str:D $_) { $styles.code-focus($_) }
